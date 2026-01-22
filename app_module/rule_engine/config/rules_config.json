@@ -1,0 +1,563 @@
+{
+  "misc_materials_app": {
+    "document_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "編號[:：]\\s*(.+?)(?=\\s*$|\\n)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "site_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {"value": "地盤名稱[:：]\\s*(.+?)(?:\\s+日期[:：]|\\s+編號[:：]|\\s*$)", "weight": 0.9},
+          {"value": "地盘名称[:：]\\s*(.+?)(?:\\s+日期[:：]|\\s+编号[:：]|\\s*$)", "weight": 0.8}
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {"value": "日期[:：]\\s*(.+?)(?:\\s+編號[:：]|\\s*$)", "weight": 0.9}
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "order_creator": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {"value": "製單人[:：]\\s*([^\n\r]*?)(?:\\s+(?:申請人|申请人)[:：]|\\n|\\s*$)", "weight": 0.9},
+          {"value": "制单人[:：]\\s*([^\n\r]*?)(?:\\s+(?:申請人|申请人)[:：]|\\n|\\s*$)", "weight": 0.8}
+        ]
+      }
+    ],
+    "applicant": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {"value": "申請人[:：]\\s*([^\n\r]*?)(?:\\s+(?:製單人|制单人)[:：]|\\n|\\s*$)", "weight": 0.9},
+          {"value": "申请人[:：]\\s*([^\n\r]*?)(?:\\s+(?:製單人|制单人)[:：]|\\n|\\s*$)", "weight": 0.8}
+        ]
+      }
+    ],
+    "site_receiver": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "地盤收貨人[:：]\\s*(\\w+)(?:\\s+(?:電(?:話[:：]?\\s*([0-9\\s]+))?))?",
+            "mapping": {"name": 1, "phone": 2},
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "product_service": [
+      {
+        "rule_type": "html_table",
+        "patterns": [
+          {
+            "selector": "table",
+            "mapping": {
+              "name": ["材料名稱", "材料名称", "名称", "品名"],
+              "specification": ["規格型號", "规格型号", "规格", "型号"],
+              "unit": ["單位", "单位", "计量单位"],
+              "quantity": ["數量", "数量"],
+              "contract_no": ["合約編號", "合同编号", "合同号"]
+            }
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ]
+  },
+  "receipts": {
+    "site_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "地盤名稱[：:]\\s*([^\n\r]+?)(?=\\s+材料分類|\\s+材料分类|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "material_category": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "材料分類[：:]\\s*([^\n\r]+?)(?=\\s+制單日期|\\s+制单日期|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "creation_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "制單日期[：:]\\s*([^\n\r]+?)(?=\\s*$|\n)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "vendor_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "客商名稱[：:]\\s*([^\n\r]+?)(?=\\s+扣保固金比例|\\s+扣保固金比例|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "payment_order_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "付辦單號[：:]\\s*([^\n\r]+?)(?=\\s*$|\n)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "contract_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "合約編號[：:]\\s*([^\n\r]+?)(?=\\s+發票日期|\\s+发票日期|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "invoice_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "發票日期[：:]\\s*([^\n\r]+?)(?=\\s+收發票日期|\\s+收发票日期|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "payment_method": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "付款方式[：:]\\s*([^\n\r]+?)(?=\\s+附單數|\\s+附单数|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "current_occurrence": [
+      {
+        "rule_type": "html_table_column",
+        "patterns": [
+          {
+            "selector": "table",
+            "header": "本期發生",
+            "row_index": 0,
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "delivery_note_no": [
+      {
+        "rule_type": "html_table_column",
+        "patterns": [
+          {
+            "selector": "table:has(th:-soup-contains('送貨單號'))",
+            "header": "送貨單號",
+            "row_index": 0,
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "invoice_no": [
+      {
+        "rule_type": "html_table_column",
+        "patterns": [
+          {
+            "selector": "table:has(th:-soup-contains('發票號碼'))",
+            "header": "發票號碼",
+            "row_index": 0,
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "remark": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "備註[：:]\\s*([^\n\r]+?)(?=\\s*$|\n)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "product_service": [
+      {
+        "rule_type": "html_table",
+        "patterns": [
+          {
+            "selector": "table:has(th:-soup-contains('材料名稱'))",
+            "mapping": {
+              "name": ["材料名稱", "材料名称", "名称", "品名", "名稱"],
+              "specification": ["規格型號", "规格型号", "规格", "型号"],
+              "unit": ["單位", "单位", "計量單位", "计量单位"],
+              "quantity": ["數量", "数量"],
+              "unit_price": ["單價", "单价"],
+              "amount": ["金額", "金额"],
+              "contract_no": ["合約編號", "合同编号", "合約号", "合同号"]
+            }
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ]
+  },
+  "delivery_note": {
+    "document_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Delivery\\s+Note\\s+#\\s*([D\\d][^\\s\\n]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "Delivery\\s+Note\\s+([D\\d][^\\s\\n]+)",
+            "weight": 0.8
+          },
+          {
+            "value": "Invoice\\s+No\\.?[：:]\\s*([^\\s\\n]+)",
+            "weight": 0.7
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "supplier": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Client\\s*[：:]\\s*([^\n\r]+)\\s*\\n\\s*Address[：:]\\s*([^\n\r]+)",
+            "mapping": {"supplier_name": 1, "address": 2},
+            "weight": 0.9
+          },
+          {
+            "value": "Customer\\s+([^\n\r]+)\\s*\\n\\s*客戶[：:]?\\s*([^\n\r]*)\\s*\\n\\s*Attention\\s+([^\n\r]+)\\s+Phone\\s*[：:]\\s*([0-9\\s]+)",
+            "mapping": {"supplier_name": 1, "address": 2, "contact_person": 3, "phone": 4},
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "site_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Site\\s*[：:]\\s*([^\n\r]+)",
+            "weight": 0.8
+          },
+          {
+            "value": "To[：:]?\\s*([^\n\r]+)",
+            "weight": 0.8
+          },
+          {
+            "value": "Ship\\s+To[：:]?\\s*([^\n\r]+)",
+            "weight": 0.8
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "delivery_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "送貨日期[：:]\\s*([0-9年月日 ]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "Date[：:]\\s*([0-9年月日,A-Za-z ]+)(?=\\s*\n)",
+            "weight": 0.8
+          },
+          {
+            "value": "Delivery\\s+([0-9年月日,A-Za-z ]+)(?=\\s*\n)",
+            "weight": 0.7
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "product_service": [
+      {
+        "rule_type": "html_table",
+        "patterns": [
+          {
+            "selector": "table",
+            "mapping": {
+              "name": ["款式", "Description", "品名", "材料名稱", "產品名稱"],
+              "specification": ["規格", "規格型號"],
+              "unit": ["單位", "計量單位"],
+              "quantity": ["數量", "Quantity", "數量"]
+            }
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Currency\\s+[：:]?\\s*([A-Z]{3})",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.8
+      }
+    ]
+  },
+  "invoice": {
+    "document_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Invoice\\s+Number[:：]?\\s*([A-Za-z0-9\\-\\/]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "發票編號[:：]?\\s*([A-Za-z0-9\\-\\/]+)",
+            "weight": 0.8
+          },
+          {
+            "value": "Invoice\\s+No\\.?[：:]?\\s*([A-Za-z0-9\\-\\/]+)",
+            "weight": 0.8
+          },
+          {
+            "value": "參考編號[：:]?\\s*([A-Za-z0-9\\-\\/]+)",
+            "weight": 0.7
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "supplier_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "MESSRS\\.?[：:]?\\s*([^\n\r]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "Client[：:]?\\s*([^\n\r]+)",
+            "weight": 0.8
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "supplier_address": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Client[：:]?\\s*[^\n\r]+\n\\s*Address[：:]?\\s*([^\n\r]+)",
+            "weight": 1.0
+          },
+          {
+            "value": "Address[：:]?\\s*([^\n\r]+)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "supplier_phone": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Contact[：:]?\\s*([^\n\r]+)",
+            "weight": 0.7
+          },
+          {
+            "value": "Tel[：:]?\\s*([^\n\r]+)",
+            "weight": 0.6
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "site_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Site[：:]?\\s*([^\n\r]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "收貨人[：:]?\\s*([^\n\r]+)",
+            "weight": 0.8
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "invoice_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Date[：:]?\\s*([0-9\\-A-Za-z,]+)(?=\\s*\n|\\s*$|\\s*Invoice)",
+            "weight": 0.9
+          },
+          {
+            "value": "收發票日期[：:]?\\s*([0-9 \\-A-Za-z,/]+)(?=\\s*\n|\\s*$|\\s*By)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "product_service": [
+      {
+        "rule_type": "html_table",
+        "patterns": [
+          {
+            "selector": "table",
+            "mapping": {
+              "name": ["貨名", "DESCRIPTION", "Description", "品名", "材料名稱", "產品名稱"],
+              "specification": ["規格", "規格型號", "Specification"],
+              "unit": ["單位", "計量單位", "UNIT"],
+              "quantity": ["數量", "QUANTITY", "Qty"],
+              "unit_price": ["單價", "UNIT PRICE", "Unit Price"],
+              "amount": ["金額", "AMOUNT", "Amount", "amount", "總額", "TOTAL", "Total", "total"]
+            }
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "TOTAL\\s+([A-Z]{2,4}|HK\\$|[¥$€£])\\s+[0-9,\\.]+",
+            "weight": 0.9
+          },
+          {
+            "value": "HK[D]?[S]?",
+            "weight": 0.7
+          },
+          {
+            "value": "([A-Z]{2,4}|HK\\$|[¥$€£])\\s+TOTAL",
+            "weight": 0.6
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.8
+      }
+    ],
+    "total_amount": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "TOTAL\\s+HK[D]?[S]?\\s*([0-9,\\.]+)",
+            "weight": 0.9
+          },
+          {
+            "value": "TOTAL\\s+([0-9,\\.]+)\\s*HK[D]?[S]?",
+            "weight": 0.8
+          },
+          {
+            "value": "Total\\s+HK\\$\\s*([0-9,\\.]+)",
+            "weight": 0.7
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ]
+  }
+}
