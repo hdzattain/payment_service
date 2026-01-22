@@ -33,3 +33,4 @@ pillow~=12.1.0
 beautifulsoup4~=4.14.3
 requests~=2.32.5
 urllib3~=2.6.3
+json_repair~=0.55.0
