@@ -18,17 +18,19 @@ app = FastAPI(
 app.add_exception_handler(CustomException, custom_exception_handler)
 
 
+
+
 # 注册接口路由（版本v1）
 app.include_router(
     ocr_auth.router,
-    prefix="/client",
+    prefix="/payment-ocr/client",
     tags=["授权管理"]
 )
 
 
 app.include_router(
     ocr_api.router,
-    prefix="/api/v1/task",
+    prefix="/payment-ocr/api/v1/task",
     tags=["任务管理"]
 )
 
