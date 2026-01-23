@@ -17,31 +17,53 @@ SAVE_DIR = os.path.join(os.getcwd(), "markdown")
 LOG_DIR = os.path.join(os.getcwd(), "logs")  # 添加日志目录配置
 
 
-def setup_logging():
+# 创建日志记录器实例（而不是在模块级别初始化）
+def get_logger():
     """
-    设置日志配置，将日志输出到指定目录
+    获取日志记录器实例
     """
+    # 确保日志目录存在
     log_dir = Path(LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # 创建日志文件名
     log_filename = log_dir / f"olmocr_service_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
-    # 配置日志
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_filename, encoding='utf-8'),
-            logging.StreamHandler()  # 同时输出到控制台
-        ]
-    )
+    # 创建专用的日志记录器
+    logger = logging.getLogger("olmocr_service")
 
-    return logging.getLogger(__name__)
+    # 如果已有处理器，先清除它们
+    if logger.handlers:
+        logger.handlers.clear()
+
+    # 设置日志级别
+    logger.setLevel(logging.INFO)
+
+    # 创建文件处理器
+    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    # 创建格式化器
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # 添加处理器到记录器
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    # 防止向上级传播
+    logger.propagate = False
+
+    return logger
 
 
 # 初始化日志记录器
-logger = setup_logging()
+logger = get_logger()
 
 
 def run_ocr_task(pdf_file_path):
