@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """全局配置类，从.env文件加载配置"""
     # 服务配置
     APP_HOST: str = "0.0.0.0"
-    APP_PORT: int = 8000
+    APP_PORT: int = 9000
     ENVIRONMENT: str = "development"
 
     # 鉴权配置

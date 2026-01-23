@@ -23,14 +23,14 @@ app.add_exception_handler(CustomException, custom_exception_handler)
 # 注册接口路由（版本v1）
 app.include_router(
     ocr_auth.router,
-    prefix="/payment-ocr/client",
+    prefix="/payment_ocr/client",
     tags=["授权管理"]
 )
 
 
 app.include_router(
     ocr_api.router,
-    prefix="/payment-ocr/api/v1/task",
+    prefix="/payment_ocr/api/v1/task",
     tags=["任务管理"]
 )
 
