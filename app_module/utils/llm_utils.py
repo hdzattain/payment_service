@@ -7,7 +7,7 @@ from json_repair import repair_json
 import requests
 
 from app_module.template.prompts_template import get_prompt_by_document_type
-
+from app_module.core.config import settings
 
 class DeepSeekAPI:
     def __init__(self, api_key: str, base_url: str = "https://ai-base-service.biz.3311csci.com/api/v1"):
@@ -151,7 +151,7 @@ def extract_data_with_llm(ocr_text: str,
         return None
 
     # 获取API密钥
-    api_key = os.getenv("DEEPSEEK_API_KEY", "sk-YTa0NgyzqHeSQ7g6taKr4WMKwMIWrwUL")
+    api_key = settings.CSCI_DEEPSEEK_API_KEY
 
     # 生成prompt
     prompt = generate_prompt(ocr_text, document_type)

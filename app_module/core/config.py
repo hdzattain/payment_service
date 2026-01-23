@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     DB_PORT: int
     DB_NAME: str
 
+    # Deepseek配置
+    CSCI_DEEPSEEK_API_KEY: str
+
     # 配置.env文件路径
     model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8")
 
