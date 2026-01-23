@@ -185,6 +185,10 @@ def send_callback_message(task_id, page_number):
             logger.warning(f"任务没有配置回调URL: task_id={task_id}")
             return
 
+        # 打印回调参数
+        logger.info(f"回调请求参数: task_id={task_id}, callback_url={callback_url}"
+                    f", data={json.dumps(callback_data, ensure_ascii=False)}")
+
         # 发送回调请求
         try:
             response = requests.post(
