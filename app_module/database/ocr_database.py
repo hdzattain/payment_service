@@ -2,9 +2,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 
+from app_module.core.config import settings
+
 # 数据库连接配置
-DATABASE_URL = ("mysql+pymysql://root:Y4t8btvdPqhl%Qgg@hk-cynosdbmysql-grp-bfn4zq51.sql.tencentcdb.com:24778"
-                "/ocr_payment_test?charset=utf8mb4")
+DATABASE_URL = (
+    f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@"
+    f"{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}?charset=utf8mb4"
+)
 
 # 创建引擎
 engine = create_engine(

@@ -17,6 +17,7 @@ from app_module.rule_engine.ocr_rule_engine import RuleEngine
 from app_module.rule_engine.rule_config_loader import RuleConfigurationLoader
 from app_module.utils.download_utils import download_file_from_url
 from app_module.database.ocr_database import SessionLocal
+from app_module.utils.feishu_utils import ErrorLog, feishu_client
 from app_module.utils.llm_utils import extract_data_with_llm
 from app_module.utils.paths_utils import build_storage_paths
 
@@ -224,6 +225,18 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 run_ocr_task,
                 image_path
             )
+
+            # 检查OCR任务执行状态
+            if ocr_response.get("status_code") == 500:
+                error_msg = ocr_response.get("error", "未知错误")
+                logger.error(f"OCR任务执行失败: task_id={task_id}, page={page_number}, error={error_msg}")
+                # 发送飞书通知
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(executor, feishu_client.send_error_log_message, ErrorLog(
+                    id=task_id,
+                    result_msg=error_msg
+                ))
+                raise Exception(f"OCR任务执行失败: {error_msg}")
 
             ocr_text = ocr_response.get("ocr_text", "")
             ocr_task_id = ocr_response.get("task_id", "")

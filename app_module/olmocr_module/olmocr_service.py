@@ -28,12 +28,12 @@ def run_ocr_task(pdf_file_path):
     # 验证输入文件是否存在
     if not os.path.exists(pdf_file_path):
         logger.error(f"❌ 文件不存在: {pdf_file_path}")
-        return
+        return {"code": 500, "error": "❌ 文件不存在！", "task_id": None, "ocr_text": ""}
 
     # 验证是否为 PDF 文件
     if not pdf_file_path.lower().endswith('.pdf'):
         logger.error(f"❌ 文件不是 PDF 格式: {pdf_file_path}")
-        return
+        return {"code": 500, "error": "❌ 文件不是 PDF 格式", "task_id": None, "ocr_text": ""}
 
     # 确保输出目录存在
     Path(SAVE_DIR).mkdir(exist_ok=True)
@@ -48,6 +48,7 @@ def run_ocr_task(pdf_file_path):
         ('files', (file_name, open(pdf_file_path, 'rb'), 'application/pdf'))
     ]
 
+    task_id = None
     try:
         # 上传大文件可能耗时较长，这里 timeout 设置为 None 表示不限时
         response = requests.post(f"{API_BASE}/process", files=files_to_upload, verify=False, timeout=None)
@@ -62,7 +63,7 @@ def run_ocr_task(pdf_file_path):
         files_to_upload[0][1][1].close()
     except Exception as e:
         logger.error(f"❌ 提交失败: {e}")
-        return
+        return {"code": 500, "error": "OlmOcr 任务执行API调用异常！", "task_id": task_id, "ocr_text": ""}
 
     # 轮询状态
     logger.info("⏳ 正在等待服务器处理（支持容错下载模式），请稍候...")
@@ -123,11 +124,11 @@ def run_ocr_task(pdf_file_path):
 
         logger.info(f"✨ 处理成功！📁 原始压缩包: {zip_path}  Markdown 目录: {extract_path} 📝 MD文件内容长度: {len(md_files_content)}")
         # 返回MD文件内容
-        return {"task_id": task_id, "ocr_text": md_files_content}
+        return {"code": 200, "task_id": task_id, "ocr_text": md_files_content}
 
     except Exception as e:
         logger.error(f"\n❌ 下载或解压失败: {e}")
-        return {"task_id": task_id, "ocr_text": ""}
+        return {"code": 500, "error": "OlmOcr 任务执行API发生错误", "task_id": task_id, "ocr_text": ""}
     finally:
         if task_id:
             cleanup_temp_files(task_id)

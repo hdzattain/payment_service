@@ -16,10 +16,22 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 1
 
-    # OCR相关配置
-    OCR_API_KEY: str
+    # 飞书服务配置
+    FEISHU_APP_ID: str
+    FEISHU_APP_SECRET: str
+    FEISHU_BOT_GROUP_ID: str
+
+    # OCR API配置
+    ocr_api_key: str  # 添加缺失的配置项
+
+    # 数据库配置
+    DB_USER: str
+    DB_PASSWORD: str
+    DB_HOST: str
+    DB_PORT: int
+    DB_NAME: str
 
     # 配置.env文件路径
     model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8")
