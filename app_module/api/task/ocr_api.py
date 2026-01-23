@@ -38,24 +38,31 @@ async def create_ocr_task(
     - callback_url: 回调URL
     - file_url: PDF文件URL
     """
-    # 生成唯一任务ID
-    task_id = f"ocr_{datetime.now().strftime('%Y%m%d%H%M%S')}_{str(uuid.uuid4())[:8]}"
+    try:
+        # 生成唯一任务ID
+        task_id = f"ocr_{datetime.now().strftime('%Y%m%d%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
-    # 记录任务创建日志
-    logger.info(f"创建OCR任务: task_id={task_id}, foreign_id={param.foreign_id}, file_url={param.file_url}")
+        # 记录任务创建日志
+        logger.info(f"创建OCR任务: task_id={task_id}, foreign_id={param.foreign_id}, file_url={param.file_url}")
 
-    # 创建任务记录
-    task_mapper = OcrTaskMapper(db)
-    task_data = {
-        "task_id": task_id,
-        "foreign_id": param.foreign_id,
-        "callback_url": param.callback_url,
-        "file_url": param.file_url,
-        "status": 0  # 待执行
-    }
-    task_mapper.create_task(task_data)
+        # 创建任务记录
+        task_mapper = OcrTaskMapper(db)
+        task_data = {
+            "task_id": task_id,
+            "foreign_id": param.foreign_id,
+            "callback_url": param.callback_url,
+            "file_url": param.file_url,
+            "status": 0  # 待执行
+        }
+        task_mapper.create_task(task_data)
 
-    background_tasks.add_task(process_ocr_task_async, task_id, param.file_url)
+        background_tasks.add_task(process_ocr_task_async, task_id, param.file_url)
+    except Exception as e:
+        logger.error(f"OCR任务创建失败: {str(e)}")
+        return {
+            "code": 500,
+            "message": "OCR任务创建失败"
+        }
 
     return {
         "code": 200,
