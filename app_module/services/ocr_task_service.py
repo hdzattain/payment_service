@@ -615,7 +615,9 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     elif ("發invoice票" in ocr_text.lower()
           or "发invoice票" in ocr_text.lower()
           or ("invoice" in ocr_text.lower() and "delivery note" not in ocr_text.lower())
-          or "發票" in ocr_text.replace(" ", "")):
+          or "發票" in ocr_text.replace(" ", "") and "delivery note" not in ocr_text.lower()
+          or ("invoice" in ocr_text.lower() and "送貨單" not in ocr_text.lower())
+          or "發票" in ocr_text.replace(" ", "") and "送貨單" not in ocr_text.lower()):
         # 这里可以添加发票的提取逻辑
         return extract_invoice_form_data(ocr_text)
     elif "delivery note" in ocr_text.lower() or "送貨簽收單" in ocr_text or "送貨單" in ocr_text:
