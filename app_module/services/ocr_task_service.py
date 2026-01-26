@@ -136,17 +136,19 @@ def send_callback_message(task_id, page_number):
             logger.error(f"未找到任务信息: task_id={task_id}")
             return
 
+        logger.info(f"开始构建回调数据，任务ID: {task_id}")  # 新增日志
         # 构建回调数据
         callback_data = {
             "task_id": task_info.task_id,
             "status": task_info.status,
             "foreign_id": task_info.foreign_id,
-            "create_at": task_info.create_datetime,
-            "items": []
+            "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime, 'isoformat') else str(task_info.create_datetime),            "items": []
         }
 
         # 查询task_id的全部status和页码信息和document_type
         task_details = detail_mapper.get_task_details_by_task_id(task_id)
+        logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")  # 新增日志
+
         # 判断所有详情的status是否都为2（执行成功）
         overall_status = task_info.status  # 默认使用原状态
         if task_details:
@@ -166,29 +168,22 @@ def send_callback_message(task_id, page_number):
         # 如果提供了页码，查询详情信息
         if page_number is not None:
             detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
+            logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")  # 新增日志
 
             if detail_info:
                 items = {
                     "page_no": detail_info.page_no,
                     "raw": detail_info.structured_data,
-                    "create_at": detail_info.create_datetime
-                }
+                    "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime, 'isoformat') else str(detail_info.create_datetime)                }
 
                 callback_data.update({
                     "items": items
                 })
-
-        # 获取回调URL（假设从任务信息中获取）
-        callback_url = getattr(task_info, 'callback_url', None)
-
-        if not callback_url:
-            logger.warning(f"任务没有配置回调URL: task_id={task_id}")
-            return
-
-        # 打印回调参数
-        logger.info(f"回调请求参数: task_id={task_id}, callback_url={callback_url}"
-                    f", data={json.dumps(callback_data, ensure_ascii=False)}")
-
+        callback_url = task_info.callback_url
+        logger.info(f"回调URL: {callback_url}")  # 新增日志
+        # # 打印回调参数
+        logger.info(f"==========回调请求参数: {json.dumps(callback_data, ensure_ascii=False)}")
+        # logger.info(f"===========================回调请求参数:")
         # 发送回调请求
         try:
             response = requests.post(
@@ -198,11 +193,33 @@ def send_callback_message(task_id, page_number):
                 timeout=30
             )
 
-            if response.status_code == 200:
-                logger.info(f"回调请求发送成功: task_id={task_id}, status_code={response.status_code}")
-            else:
-                logger.error(
-                    f"回调请求发送失败: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+            logger.info(f"========回调请求响应信息: task_id={task_id}, http_status={response.status_code}")
+
+            try:
+                response_json = response.json()
+                logger.info(f"响应体JSON: {response_json}")
+
+                # 获取业务状态码，提供默认值以防止KeyError
+                business_code = response_json.get('result', -1)
+
+                # 同时检查HTTP状态码和业务状态码
+                if response.status_code == 200 and business_code == 0:
+                    logger.info(
+                        f"回调请求发送成功: task_id={task_id}, http_status={response.status_code}, business_code={business_code}")
+                else:
+                    logger.error(
+                        f"回调请求部分失败: task_id={task_id}, http_status={response.status_code}, business_code={business_code}, response={response.text}")
+
+            except ValueError:
+                # 响应不是JSON格式的情况
+                logger.warning(
+                    f"响应不是JSON格式: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+
+                if response.status_code == 200:
+                    logger.info(f"回调请求HTTP成功: task_id={task_id}, status_code={response.status_code}")
+                else:
+                    logger.error(
+                        f"回调请求HTTP失败: task_id={task_id}, status_code={response.status_code}, response={response.text}")
 
         except Exception as e:
             logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
