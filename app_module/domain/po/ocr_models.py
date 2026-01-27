@@ -14,6 +14,7 @@ class OcrTask(Base):
     foreign_id = Column(String(255), comment='外部系统Id')
     callback_url = Column(String(500), comment='回调url')
     file_url = Column(String(500), comment='文件url')
+    local_path = Column(String(500), comment='文件本地存储路径')
     file_page = Column(Integer, comment='文件页数')
     is_full_type = Column(SmallInteger, default=0, comment='票据是否齐全 0-否 1-是')
     status = Column(SmallInteger, default=0, comment='执行状态 0-待执行、1-执行中、2-执行成功、3-执行失败、4-部分执行失败')

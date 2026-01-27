@@ -70,7 +70,7 @@ async def process_ocr_task_async(task_id: str, file_url: str) -> None:
 
             update_data = {
                 "file_page": pdf_split_result.get("total_pages", 0),
-                "file_url": download_file,
+                "local_path": download_file,
                 "status": 1  # 执行中
             }
             task_mapper.update_task(task_id, update_data)
@@ -612,20 +612,23 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     # 首先判断ocr_text属于哪类票据，然后提取相应字段
     if "物資付款辦理單" in ocr_text or "物资付款办理单" in ocr_text:
         return extract_receipts_form_data(ocr_text)
-    elif ("發invoice票" in ocr_text.lower()
-          or "发invoice票" in ocr_text.lower()
-          or ("invoice" in ocr_text.lower() and "delivery note" not in ocr_text.lower())
-          or "發票" in ocr_text.replace(" ", "") and "delivery note" not in ocr_text.lower()
-          or ("invoice" in ocr_text.lower() and "送貨單" not in ocr_text.lower())
-          or "發票" in ocr_text.replace(" ", "") and "送貨單" not in ocr_text.lower()):
-        # 这里可以添加发票的提取逻辑
-        return extract_invoice_form_data(ocr_text)
-    elif "delivery note" in ocr_text.lower() or "送貨簽收單" in ocr_text or "送貨單" in ocr_text:
+    elif ("delivery note" in ocr_text.lower()
+          or "送貨簽收單" in ocr_text
+          or "送貨單" in ocr_text
+          or "交貨單" in ocr_text
+          or "delivery order" in ocr_text.lower()):
         # 其他类型票据的提取逻辑
         return extract_delivery_note_data(ocr_text)
-    elif "地盤零星材料申請表" in ocr_text or "地盤零星材料" in ocr_text:
+    elif ("發invoice票" in ocr_text.lower().replace(" ", "")
+          or "发invoice票" in ocr_text.lower().replace(" ", "")
+          or "invoice" in ocr_text.lower()
+          or "發票" in ocr_text.replace(" ", "")):
+        # 这里可以添加发票的提取逻辑
+        return extract_invoice_form_data(ocr_text)
+    elif "地盤零星材料申請表" in ocr_text:
         # 默认返回空字典
         return extract_misc_materials_data(ocr_text)
     else:
         logger.warning("无法识别票据类型，返回空结构化数据")
         return {}
+

@@ -90,7 +90,7 @@ RECEIPTS_PROMPT = """
   ],
   "invoice_no": "字符串（发票号码，如：SNT2312-0110）",
   "delivery_note_no": "字符串（送货单号，与产品项内delivery_note_no一致）",
-  "remark": "字符串（备注，如：54010322）"
+  "remarks": "字符串（备注，如：54010322）"
 }}
 
 ## 最终输出要求

@@ -236,7 +236,7 @@
         "confidence_threshold": 0.5
       }
     ],
-    "remark": [
+    "remarks": [
       {
         "rule_type": "regex",
         "patterns": [

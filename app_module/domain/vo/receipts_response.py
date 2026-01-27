@@ -30,4 +30,4 @@ class ReceiptsResponse(BaseModel):
     product_service: List[ReceiptProductServiceItem]  # 付款项目列表
     invoice_no: str                        # 发票号码 (76188)
     delivery_note_no: str                  # 送货单号 (81783)
-    remark: Optional[str] = ""             # 备注
+    remarks: Optional[str] = ""             # 备注
