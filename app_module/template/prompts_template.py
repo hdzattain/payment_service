@@ -118,30 +118,34 @@ DELIVERY_NOTE_PROMPT = """
 {ocr_text}
 
 ## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
-{{
-  "document_type": "",
-  "document_no": "字符串（送货单编号，如D23/005012）",
-  "supplier": {{
-    "supplier_id": "字符串（可选，供应商ID，无则填""）",
-    "supplier_name": "字符串（必填，供应商名称，无则填""）",
-    "address": "字符串（必填，供应商地址，无则填""）",
-    "phone": "字符串（必填，供应商电话，无则填""）"
-  }},
-  "site_name": "字符串（送货单收取人/收货方，如將軍澳海水化淡廠）",
-  "delivery_date": "字符串（送货单日期，格式YYYY-MM-DD，无则填""）",
+{
+  "document_type": "字符串（文件类型，固定为\"物資付款辦理單\"）",
+  "document_no": "字符串（付辦單號，如：CDX/2401/A/0001）",
+  "site_name": "字符串（地盤名稱，如：將軍澳海水化淡廠第一階段(CDX)）",
+  "material_category": "字符串（材料分類，如：安全環保用品(U01)）",
+  "date": "字符串（制單日期，如：2024年1月2日）",
+  "supplier_name": "字符串（供應商名稱/客商名稱，如：國際安全用品有限公司(ISEL)）",
+  "contract_no": "字符串（合約編號，如：DPC/GEN/23033/00）",
+  "invoice_date": "字符串（發票日期，如：2023年12月29日）",
   "product_service": [
-    {{
-      "name": "字符串（产品名称，如維達三摺式抹手紙）",
-      "specification": "字符串（产品规格，如16包/箱，无则填""）",
-      "unit": "字符串（计量单位，如箱/條/個，无则填""）",
-      "quantity": 整数（产品数量，仅数字，如30）,
-      "unit_price": "字符串（可选，单价，无则填""）",
-      "amount": "字符串（可选，金额，无则填""）"
-    }}
+    {
+      "name": "字符串（材料名稱，如：馬路欄河）",
+      "specification": "字符串（規格型號，如：XC0302 2M (L)黃色/橙色）",
+      "delivery_note_no": "字符串（送貨單編號，如：SNT2312-0110）",
+      "unit": "字符串（計量單位，如：個）",
+      "quantity": 整数（數量，純數字，如100）,
+      "unit_price": "字符串（單價，如：122.000）",
+      "amount": "字符串（金額，如：12,200.00）",
+      "contract_no": "字符串（合約編號，與頂層contract_no一致）"
+    }
   ],
-  "currency": "字符串（可选，币种，如HKD）",
-  "total_amount": "字符串（可选，送货单总金额，无则填""）"
-}}
+  "currency": "字符串（貨幣，如：港幣/HKD）",
+  "total_amount": "字符串（本期發生/總金額，如：12,200.00）",
+  "payment_method": "字符串（付款方式，如：支票）",
+  "invoice_no": "字符串（發票號碼，如：SNT2312-0110）",
+  "delivery_note_no": "字符串（送貨單號，與產品項內delivery_note_no一致）",
+  "remarks": "字符串（備註，如：54010322）"
+}
 
 ## 输出要求：
 仅输出上述结构的JSON字符串，确保可直接通过Python的json.loads()解析，无需任何修改。

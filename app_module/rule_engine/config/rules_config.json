@@ -113,7 +113,7 @@
         "confidence_threshold": 0.5
       }
     ],
-    "creation_date": [
+    "date": [
       {
         "rule_type": "regex",
         "patterns": [
@@ -126,7 +126,7 @@
         "confidence_threshold": 0.5
       }
     ],
-    "vendor_name": [
+    "supplier_name": [
       {
         "rule_type": "regex",
         "patterns": [
@@ -139,7 +139,7 @@
         "confidence_threshold": 0.5
       }
     ],
-    "payment_order_no": [
+    "document_no": [
       {
         "rule_type": "regex",
         "patterns": [
@@ -191,7 +191,7 @@
         "confidence_threshold": 0.5
       }
     ],
-    "current_occurrence": [
+    "total_amount": [
       {
         "rule_type": "html_table_column",
         "patterns": [
@@ -199,6 +199,19 @@
             "selector": "table",
             "header": "本期發生",
             "row_index": 0,
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "幣種[：:]\\s*([^\n\r]+?)(?=\\s+是否代購|\\s+是否代购|$)",
             "weight": 0.9
           }
         ],

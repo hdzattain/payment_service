@@ -501,17 +501,20 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
     required_fields_map = {
         "receipts": [
             'document_type',
+            'document_no',
             'site_name',
             'material_category',
-            'creation_date',
-            'vendor_name',
-            'payment_order_no',
+            'date',
+            'supplier_name',
             'contract_no',
             'invoice_date',
-            'payment_method',
-            'current_occurrence',
             'product_service',
-            'invoice_no'
+            'currency',
+            'total_amount',
+            'payment_method',
+            'invoice_no',
+            'delivery_note_no',
+            'remarks'
         ],
         "invoice": [
             'document_type',
