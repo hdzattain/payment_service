@@ -142,3 +142,6 @@ private.key
 .id_rsa
 
 markdown
+.env
+.gitignore
+.gitignore
