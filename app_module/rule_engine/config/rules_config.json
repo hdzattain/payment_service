@@ -572,5 +572,167 @@
         "confidence_threshold": 0.7
       }
     ]
+  },
+  "transaction": {
+    "document_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "檔案名稱[：:]\\s*([^\\n\\r]+?)(?=\\s+檔案參考號|\\s+文件參考號|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "文件名稱[：:]\\s*([^\\n\\r]+?)(?=\\s+檔案參考號|\\s+文件參考號|$)",
+            "weight": 0.8
+          },
+          {
+            "value": "File\\s+Name[：:]\\s*([^\\n\\r]+?)(?=\\s+File\\s+Reference|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "document_status": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "狀態[：:]\\s*([^\\n\\r]+?)(?=\\s+發起賬戶號碼|\\s+Originating\\s+Account|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Status[：:]\\s*([^\\n\\r]+?)(?=\\s+Originating\\s+Account|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "originating_account_number": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "發起賬戶號碼[：:]\\s*([^\\n\\r]+?)(?=\\s+發起賬戶名稱|\\s+Originating\\s+Account\\s+Name|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Originating\\s+Account\\s+Number[：:]\\s*([^\\n\\r]+?)(?=\\s+Originating\\s+Account\\s+Name|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "originating_account_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "發起賬戶名稱[：:]\\s*([^\\n\\r]+?)(?=\\s+生效日期|\\s+Effective\\s+Date|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Originating\\s+Account\\s+Name[：:]\\s*([^\\n\\r]+?)(?=\\s+Effective\\s+Date|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "effective_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "生效日期[：:]\\s*([^\\n\\r]+?)(?=\\s+交易筆數|\\s+Transaction\\s+Count|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Effective\\s+Date[：:]\\s*([^\\n\\r]+?)(?=\\s+Transaction\\s+Count|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "transaction_count": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "交易筆數[：:]\\s*([^\\n\\r]+?)(?=\\s+縂金額|\\s+Total\\s+Amount|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Transaction\\s+Count[：:]\\s*([^\\n\\r]+?)(?=\\s+Total\\s+Amount|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "total_amount": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "縂金額[：:]\\s*([^\\n\\r]+?)(?=\\s+目標帳戶號碼|\\s+Destination\\s+A/C|$)",
+            "weight": 0.9
+          },
+          {
+            "value": "Total\\s+Amount[：:]\\s*([^\\n\\r]+?)(?=\\s+Destination\\s+A/C|$)",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "transactions": [
+      {
+        "rule_type": "html_table",
+        "patterns": [
+          {
+            "selector": "table",
+            "mapping": {
+              "destination_account_number": ["目標帳戶號碼", "目標賬戶號碼", "Destination A/C", "Destination Account Number"],
+              "destination_account_name": ["目標帳戶號碼名稱", "目標賬戶號碼名稱", "Destination A/C Name", "Destination Account Name"],
+              "currency": ["貨幣", "Currency"],
+              "amount": ["金額", "Amount"],
+              "reference": ["參考號", "Reference"],
+              "remark": ["備注", "Remark"]
+            }
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "貨幣[：:]\\s*([A-Z]{3})",
+            "weight": 0.9
+          },
+          {
+            "value": "Currency[：:]\\s*([A-Z]{3})",
+            "weight": 0.9
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.8
+      }
+    ]
   }
 }

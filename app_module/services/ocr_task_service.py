@@ -489,6 +489,42 @@ def extract_misc_materials_data(ocr_text):
     }
 
 
+def extract_transaction_record_data(ocr_text):
+    """使用规则引擎和BeautifulSoup提取交易记录数据"""
+    document_type = "transaction"
+
+    # 初始化结构化数据
+    regex_structured_data = {
+        "document_type": document_type,
+        "transactions": []
+    }
+
+    # 设置规则引擎上下文
+    rule_engine.set_context(ocr_text)
+
+    # 使用规则引擎提取字段
+    extracted_fields = rule_engine.extract_fields(document_type)
+
+    # 将提取的字段映射到结构化数据
+    for field, value in extracted_fields.items():
+        if field == 'transactions' and isinstance(value, list):
+            # 处理交易记录列表格式
+            regex_structured_data[field] = value
+        else:
+            regex_structured_data[field] = value
+
+
+    logger.info(f'\n提取的交易记录结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
+    structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+
+    return {
+        "document_type": document_type,
+        "structured_data": structured_data,
+        "llm_structured_data": llm_data,
+        "regex_structured_data": regex_structured_data
+    }
+
+
 def calculate_recognition_rate(structured_data: dict, document_type: str) -> float:
     """
     通用的结构化数据识别率计算方法
@@ -546,6 +582,19 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'applicant',
             'order_contact',
             'site_receiver'
+        ],
+        "transaction": [
+            'document_type',
+            'document_no',
+            'document_name',
+            'document_status',
+            'originating_account_number',
+            'originating_account_name',
+            'effective_date',
+            'transaction_count',
+            'currency',
+            'total_amount',
+            'transactions'
         ]
     }
 
@@ -631,6 +680,8 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     elif "地盤零星材料申請表" in ocr_text:
         # 默认返回空字典
         return extract_misc_materials_data(ocr_text)
+    elif "轉帳記錄" in ocr_text or "交易記錄" in ocr_text or "交易詳情" in ocr_text or "Transaction Record" in ocr_text or "Transaction Detail" in ocr_text:
+        return extract_transaction_record_data(ocr_text)
     else:
         logger.warning("无法识别票据类型，返回空结构化数据")
         return {}

@@ -105,6 +105,8 @@ def identify_document_type(ocr_text: str) -> str:
     elif "地盤零星材料申請表" in ocr_text or "地盤零星材料" in ocr_text:
         # 默认返回空字典
         return "misc_materials_app"
+    elif "交易記錄" in ocr_text or "交易记录" in ocr_text or "Transaction Record" in ocr_text:
+        return "transaction"
     else:
         # 如果无法识别具体类型，默认为支持文档
         return "supporting_docs"

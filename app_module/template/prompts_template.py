@@ -207,6 +207,54 @@ MISC_MATERIALS_APP_PROMPT = """
 仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、层级清晰。
 """
 
+TRANSACTION_RECORD_PROMPT = """
+你是专业的银行交易记录结构化数据提取专家，需严格按照指定的JSON结构，从以下OCR识别的交易记录文本中提取所有字段信息，文本可能包含繁体中文/英文混合内容，请精准识别并保留原始格式。
+
+## 核心提取规则（必须严格遵守，缺一不可）
+1. 输出格式：仅返回**合法可解析的JSON字符串**，不添加任何解释、备注、示例、换行或额外文字，确保可直接通过Python的json.loads()解析；
+2. 字段要求：
+   - 所有字段名称必须与指定JSON结构**完全一致**（包括大小写、中英文），无遗漏、无新增；
+   - 所有字段若无对应信息，统一填充为**空字符串""**；
+   - 列表/数组处理：
+     - transactions：有多少交易记录就提取多少，无则返回空数组[]；
+   - 嵌套结构：严格按层级提取（transactions为数组对象）；
+3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测、不补充任何未提及的信息；
+4. 格式统一：
+   - 日期字段保留原始格式（如"2025/12/10"），不做格式转换；
+   - 金额保留原始格式（如"122206.00"），不做格式转换；
+   - 名称/编号/联系方式保留原始内容（含括号、符号、中英文），不做翻译或修改。
+
+## OCR识别的交易记录文本：
+{ocr_text}
+
+## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
+{{
+  "document_type": "字符串（文件类型，固定为\"Transaction Record\"）",
+  "document_no": "字符串（文件编号，檔案參考號，如：F2534271682）",
+  "document_name": "字符串（檔案名稱，如：Y2025121001.DAT）",
+  "document_status": "字符串（狀態，如：等候第一次授權Pending 1st Authorisation）",
+  "originating_account_number": "字符串（發起賬戶號碼，如：012-699-2-030055-3）",
+  "originating_account_name": "字符串（發起賬戶名稱，如：CHINA STATE - STECJOINT VENTURE）",
+  "effective_date": "字符串（生效日期，如：2025/12/10）",
+  "transaction_count": "字符串（交易筆數，如：1）",
+  "currency": "字符串（幣種，如：HKD）",
+  "total_amount": "字符串（總金額，如：122206.00）",
+  "transactions": [
+    {{
+      "destination_account_number": "字符串（目標帳戶號碼，如：004111418042001）",
+      "destination_account_name": "字符串（目標帳戶號碼名稱，如：Construction Industry Council）",
+      "currency": "字符串（幣種，如：HKD）",
+      "amount": "字符串（金額，如：122206.00）",
+      "reference": "字符串（參考號，如：Y2025121001）",
+      "remark": "字符串（備注，如：DN3418712）"
+    }}
+  ]
+}}
+
+## 最终输出要求
+仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、层级清晰。
+"""
+
 
 def get_prompt_by_document_type(document_type: str) -> str:
     """
@@ -214,7 +262,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
 
     Args:
         ocr_text: OCR识别的文本内容
-        document_type: 文档类型（invoice, receipts, delivery_note, misc_materials_app等）
+        document_type: 文档类型（invoice, receipts, delivery_note, misc_materials_app, transaction等）
 
     Returns:
         格式化后的Prompt字符串
@@ -224,7 +272,8 @@ def get_prompt_by_document_type(document_type: str) -> str:
         "invoice": INVOICE_PROMPT,
         "receipts": RECEIPTS_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,
-        "misc_materials_app": MISC_MATERIALS_APP_PROMPT
+        "misc_materials_app": MISC_MATERIALS_APP_PROMPT,
+        "transaction": TRANSACTION_RECORD_PROMPT
     }
 
     # 获取对应的Prompt模板，如果类型不存在则使用发票模板作为默认值
