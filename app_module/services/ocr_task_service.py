@@ -128,7 +128,6 @@ def send_callback_message(task_id, page_number):
         task_mapper = OcrTaskMapper(db)
         detail_mapper = OcrTaskDetailMapper(db)
 
-
         # 查询任务信息
         task_info = task_mapper.get_task_by_id(task_id)
 
@@ -142,7 +141,9 @@ def send_callback_message(task_id, page_number):
             "task_id": task_info.task_id,
             "status": task_info.status,
             "foreign_id": task_info.foreign_id,
-            "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime, 'isoformat') else str(task_info.create_datetime),            "items": []
+            "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime,
+                                                                          'isoformat') else str(
+                task_info.create_datetime), "items": []
         }
 
         # 查询task_id的全部status和页码信息和document_type
@@ -174,7 +175,9 @@ def send_callback_message(task_id, page_number):
                 items = {
                     "page_no": detail_info.page_no,
                     "raw": detail_info.structured_data,
-                    "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime, 'isoformat') else str(detail_info.create_datetime)                }
+                    "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
+                                                                                    'isoformat') else str(
+                        detail_info.create_datetime)}
 
                 callback_data.update({
                     "items": items
@@ -331,6 +334,12 @@ def extract_receipts_form_data(ocr_text):
     logger.info(f'\n提取的结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
 
+    # # 统一转换日期格式
+    # invoice_date = structured_data.get('invoice_date')
+    # date = structured_data.get('date')
+    # structured_data['invoice_date'] = convert_dates_in_text(invoice_date)
+    # structured_data['date'] = convert_dates_in_text(date)
+
     return {
         "document_type": document_type,
         "structured_data": structured_data,
@@ -388,6 +397,10 @@ def extract_invoice_form_data(ocr_text):
     logger.info(f'\n提取的发票结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
 
+    # # 统一转换日期格式
+    # invoice_date = structured_data.get('invoice_date')
+    # structured_data['invoice_date'] = convert_dates_in_text(invoice_date)
+
     return {
         "document_type": document_type,
         "structured_data": structured_data,
@@ -433,6 +446,10 @@ def extract_delivery_note_data(ocr_text):
 
     logger.info(f'\n提取的配送单结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+
+    # # 统一转换日期格式
+    # invoice_date = structured_data.get('delivery_date')
+    # structured_data['delivery_date'] = convert_dates_in_text(invoice_date)
 
     return {
         "document_type": document_type,
@@ -480,6 +497,10 @@ def extract_misc_materials_data(ocr_text):
 
     logger.info(f'\n提取的结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+
+    # # 统一转换日期格式
+    # invoice_date = structured_data.get('date')
+    # structured_data['date'] = convert_dates_in_text(invoice_date)
 
     return {
         "document_type": document_type,
@@ -614,7 +635,7 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
 
 
 def merge_structured_data_with_llm(regex_structured_data: dict, ocr_text: str, document_type: str,
-                                   threshold: float = 40.0) -> tuple[dict, dict[str, Any] | None]:
+                                   threshold: float = 85.0) -> tuple[dict, dict[str, Any] | None]:
     """
     根据识别率阈值决定是否使用LLM辅助处理，并合并数据
 
@@ -622,7 +643,7 @@ def merge_structured_data_with_llm(regex_structured_data: dict, ocr_text: str, d
         regex_structured_data: 规则引擎提取的结构化数据
         ocr_text: OCR文本内容
         document_type: 文档类型
-        threshold: 识别率阈值，默认40%
+        threshold: 识别率阈值，默认85%
 
     Returns:
         合并后的结构化数据
