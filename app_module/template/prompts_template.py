@@ -657,30 +657,30 @@ to be Continued
 
 ## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
 ## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
-{
+{{
   "document_type": "字符串（文件类型，固定为\"delivery_note\"）",
   "document_no": "字符串（送貨單編號，如：D22-72035）",
-  "supplier": {
+  "supplier": {{
     "supplier_id": "字符串（供應商ID，如：未提供則留空）",
     "supplier_name": "字符串（供應商名稱，如：民光電器行 MAN KWONG ELECTRIC CO.）",
     "address": "字符串（供應商地址，如：九龍上海街269地下 G/F,269 SHANGHAI ST, KOWLOON, HONG KONG）",
     "phone": "字符串（供應商電話，如：23852973）"
-  },
+  }},
   "site_name": "字符串（送貨單收取人，如：中國建築工程(香港)有限公司(1511052-05)CDX 將軍澳海水化淡廠第一期(施工)）",
   "delivery_date": "字符串（送貨單日期，如：30/11/2022）",
   "product_service": [
-    {
+    {{
       "name": "字符串（產品名稱，如：大尼龍袋）",
       "specification": "字符串（產品規格，如：PB1013）",
       "unit": "字符串（計量單位，如：個）",
       "quantity": 整数（產品數量，如：6000）,
       "unit_price": "字符串（單價，如：未提供則留空）",
       "amount": "字符串（金額，如：未提供則留空）"
-    }
+    }}
   ],
   "currency": "字符串（幣種，如：未提供則留空）",
   "total_amount": "字符串（送貨單總金額，如：未提供則留空）"
-}
+}}
 
 
 ## 输出要求：

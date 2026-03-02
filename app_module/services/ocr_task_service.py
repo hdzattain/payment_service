@@ -657,13 +657,20 @@ def merge_structured_data_with_llm(regex_structured_data: dict, ocr_text: str, d
 
     if recognition_rate < threshold:
         logger.warning(f'识别率低于{threshold}% ({recognition_rate:.2f}%), 使用LLM辅助处理')
-        llm_structured_data = extract_data_with_llm(ocr_text, document_type)
+        try:
+            llm_structured_data = extract_data_with_llm(ocr_text, document_type)
+        except Exception as e:
+            logger.error(f"LLM提取数据时发生错误: {e}", exc_info=True)
+            llm_structured_data = None  # 出错时赋值为None，继续执行
 
         # 合并LLM数据，以llm_structured_data数据为准
         if llm_structured_data:
-            # 遍历LLM提取的数据，优先使用LLM的数据覆盖structured_data
-            for key, value in llm_structured_data.items():
-                structured_data[key] = value  # 直接覆盖，以LLM结果为准
+            try:
+                # 遍历LLM提取的数据，优先使用LLM的数据覆盖structured_data
+                for key, value in llm_structured_data.items():
+                    structured_data[key] = value  # 直接覆盖，以LLM结果为准
+            except Exception as e:
+                logger.error(f"合并LLM数据时发生错误: {e}", exc_info=True)
 
     return structured_data, llm_structured_data
 
