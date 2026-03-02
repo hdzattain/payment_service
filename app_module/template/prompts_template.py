@@ -596,124 +596,92 @@ Shipped FOB
   <tr><td>002</td><td>維達廁紙 藍色</td><td>60 條</td></tr>
   <tr><td>003</td><td>維達面紙(60盒/箱)</td><td>6 箱</td></tr>
   <tr><td>004</td><td>汽車香座香片</td><td>6 個</td></tr>
-  <tr><td>005</td><td>口罩(獨立包裝)</td><td>10 盒</td></tr>
-  <tr><td>006</td><td>藥水膠布100片/盒</td><td>2 盒</td></tr>
 </table>
 
 to be Continued
 
 #### 输出：
 {{
-    "document_type": "delivery_note",
-    "document_no": "D23/005012",
-    "site_name": "將軍澳海水化淡廠",
-    "material_category": "",
-    "date": "2023-12-04",
+  "document_type": "delivery_note",
+  "document_no": "D23/005012",
+  "supplier": {{
+    "supplier_id": "",
     "supplier_name": "",
-    "contract_no": "",
-    "invoice_date": "",
-    "product_service": [
-        {{
-            "name": "維達三摺式抹手紙(16包/箱)",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "箱",
-            "quantity": 30,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }},
-        {{
-            "name": "維達廁紙 藍色",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "條",
-            "quantity": 60,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }},
-        {{
-            "name": "維達面紙(60盒/箱)",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "箱",
-            "quantity": 6,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }},
-        {{
-            "name": "汽車香座香片",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "個",
-            "quantity": 6,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }},
-        {{
-            "name": "口罩(獨立包裝)",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "盒",
-            "quantity": 10,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }},
-        {{
-            "name": "藥水膠布100片/盒",
-            "specification": "",
-            "delivery_note_no": "",
-            "unit": "盒",
-            "quantity": 2,
-            "unit_price": "",
-            "amount": "",
-            "contract_no": ""
-        }}
-    ],
-    "currency": "HKD",
-    "total_amount": "",
-    "payment_method": "月結",
-    "invoice_no": "",
-    "delivery_note_no": "",
-    "remarks": ""
+    "address": "",
+    "phone": ""
+  }},
+  "site_name": "將軍澳海水化淡廠",
+  "delivery_date": "2023-12-04",
+  "product_service": [
+    {{
+      "name": "維達三摺式抹手紙(16包/箱)",
+      "specification": "",
+      "unit": "箱",
+      "quantity": 30,
+      "unit_price": "",
+      "amount": ""
+    }},
+    {{
+      "name": "維達廁紙 藍色",
+      "specification": "",
+      "unit": "條",
+      "quantity": 60,
+      "unit_price": "",
+      "amount": ""
+    }},
+    {{
+      "name": "維達面紙(60盒/箱)",
+      "specification": "",
+      "unit": "箱",
+      "quantity": 6,
+      "unit_price": "",
+      "amount": ""
+    }},
+    {{
+      "name": "汽車香座香片",
+      "specification": "",
+      "unit": "個",
+      "quantity": 6,
+      "unit_price": "",
+      "amount": ""
+    }}
+  ],
+  "currency": "HKD",
+  "total_amount": "",
+  "payment_method": "月結",
+  "remarks": ""
 }}
 
 ## OCR识别文本：
 {ocr_text}
 
 ## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
-{{
+## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
+{
   "document_type": "字符串（文件类型，固定为\"delivery_note\"）",
-  "document_no": "字符串（付辦單號，如：CDX/2401/A/0001）",
-  "site_name": "字符串（地盤名稱，如：將軍澳海水化淡廠第一階段(CDX)）",
-  "material_category": "字符串（材料分類，如：安全環保用品(U01)）",
-  "date": "字符串（制單日期，如：2024-01-02）",
-  "supplier_name": "字符串（供應商名稱/客商名稱，如：國際安全用品有限公司(ISEL)）",
-  "contract_no": "字符串（合約編號，如：DPC/GEN/23033/00）",
-  "invoice_date": "字符串（發票日期，如：2023-12-29）",
+  "document_no": "字符串（送貨單編號，如：D22-72035）",
+  "supplier": {
+    "supplier_id": "字符串（供應商ID，如：未提供則留空）",
+    "supplier_name": "字符串（供應商名稱，如：民光電器行 MAN KWONG ELECTRIC CO.）",
+    "address": "字符串（供應商地址，如：九龍上海街269地下 G/F,269 SHANGHAI ST, KOWLOON, HONG KONG）",
+    "phone": "字符串（供應商電話，如：23852973）"
+  },
+  "site_name": "字符串（送貨單收取人，如：中國建築工程(香港)有限公司(1511052-05)CDX 將軍澳海水化淡廠第一期(施工)）",
+  "delivery_date": "字符串（送貨單日期，如：30/11/2022）",
   "product_service": [
-    {{
-      "name": "字符串（材料名稱，如：馬路欄河）",
-      "specification": "字符串（規格型號，如：XC0302 2M (L)黃色/橙色）",
-      "delivery_note_no": "字符串（送貨單編號，如：SNT2312-0110）",
+    {
+      "name": "字符串（產品名稱，如：大尼龍袋）",
+      "specification": "字符串（產品規格，如：PB1013）",
       "unit": "字符串（計量單位，如：個）",
-      "quantity": 整数（數量，純數字，如100）,
-      "unit_price": "字符串（單價，如：122.000）",
-      "amount": "字符串（金額，如：12200.00）",
-      "contract_no": "字符串（合約編號，與頂層contract_no一致）"
-    }}
+      "quantity": 整数（產品數量，如：6000）,
+      "unit_price": "字符串（單價，如：未提供則留空）",
+      "amount": "字符串（金額，如：未提供則留空）"
+    }
   ],
-  "currency": "字符串（貨幣，如：港幣/HKD）",
-  "total_amount": "字符串（本期發生/總金額，如：12200.00）",
-  "payment_method": "字符串（付款方式，如：支票）",
-  "invoice_no": "字符串（發票號碼，如：SNT2312-0110）",
-  "delivery_note_no": "字符串（送貨單號，與產品項內delivery_note_no一致）",
-  "remarks": "字符串（備註，如：54010322）"
-}}
+  "currency": "字符串（幣種，如：未提供則留空）",
+  "total_amount": "字符串（送貨單總金額，如：未提供則留空）"
+}
+
 
 ## 输出要求：
 仅输出上述结构的JSON字符串，确保可直接通过Python的json.loads()解析，无需任何修改。
