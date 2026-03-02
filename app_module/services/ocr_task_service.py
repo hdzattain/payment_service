@@ -609,13 +609,15 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'document_no',
             'document_name',
             'document_status',
+            'igbt_reference',
             'originating_account_number',
             'originating_account_name',
             'effective_date',
             'transaction_count',
             'currency',
             'total_amount',
-            'transactions'
+            'transactions',
+            'cheque_number'
         ]
     }
 
@@ -657,12 +659,11 @@ def merge_structured_data_with_llm(regex_structured_data: dict, ocr_text: str, d
         logger.warning(f'识别率低于{threshold}% ({recognition_rate:.2f}%), 使用LLM辅助处理')
         llm_structured_data = extract_data_with_llm(ocr_text, document_type)
 
-        # 合并LLM数据，以structured_data数据为准
+        # 合并LLM数据，以llm_structured_data数据为准
         if llm_structured_data:
-            # 遍历LLM提取的数据，只在structured_data中没有该字段时才使用LLM的数据
+            # 遍历LLM提取的数据，优先使用LLM的数据覆盖structured_data
             for key, value in llm_structured_data.items():
-                if key not in structured_data or not structured_data[key]:
-                    structured_data[key] = value
+                structured_data[key] = value  # 直接覆盖，以LLM结果为准
 
     return structured_data, llm_structured_data
 
@@ -701,7 +702,8 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     elif "地盤零星材料申請表" in ocr_text:
         # 默认返回空字典
         return extract_misc_materials_data(ocr_text)
-    elif "轉帳記錄" in ocr_text or "交易記錄" in ocr_text or "交易詳情" in ocr_text or "Transaction Record" in ocr_text or "Transaction Detail" in ocr_text:
+    elif ("轉帳記錄" in ocr_text or "交易記錄" in ocr_text or "交易詳情" in ocr_text or "Transaction Record" in ocr_text or "Transaction Detail" in ocr_text
+          or "igbt" in ocr_text.lower() or "祈付" in ocr_text or "H.K.DOLLARS" in ocr_text or "H.K. DOLLARS" in ocr_text):
         return extract_transaction_record_data(ocr_text)
     else:
         logger.warning("无法识别票据类型，返回空结构化数据")

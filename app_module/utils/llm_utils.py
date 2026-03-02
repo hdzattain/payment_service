@@ -154,11 +154,11 @@ def extract_data_with_llm(ocr_text: str,
     api_key = settings.CSCI_DEEPSEEK_API_KEY
 
     # 生成prompt
-    prompt = generate_prompt(ocr_text, document_type)
+    prompts = generate_prompt(ocr_text, document_type)
 
     # 创建消息列表
     message = [
-        {"role": "user", "content": prompt}
+        {"role": "user", "content": prompts}
     ]
 
     # 调用API
@@ -185,39 +185,66 @@ if __name__ == "__main__":
     ocr_text = """
 Delivery Note
 
-送貨日期：2023 年 8 月 15 日
+ID：中國CDX / 4224
+Customer 中國建築工程(香港)有限公司(海水化淡廠)
+客戶：
+Attention 卓生 Phone : 9138 2007
+Reference DPC/GEN/23003 Fax : 3010 8232
 
-Client : Chain State-Alchmix Joint Venture
+Delivery Note # D23/005012
+Date：04 December, 2023
+Page：1 of 2
+Salesperson CHOW
 
-Address: 將軍澳海水化淡廠第一期將軍澳環保大道 137 堆填區 (中國建築地盤)
+To：將軍澳海水化淡廠
+Ship To：將軍澳海水化淡廠 137 堆填區，翠谷
+卓生 9138 2007 / 林生 9215 3007 / 謝生 5962 9254
 
-(備註:送貨半小時前通知)
-Contact : 德仔收
-59629254
-Invoice No.: SNT2308-0044
-Site : CDX
-將軍澳海水化淡廠
-PO NO: CDX3070
+Delivery 04 December, 2023
+Payment 月結
+Currency HKD
+Shipped FOB
 
 <table>
   <tr>
-    <th>箱號</th>
-    <th>款式</th>
-    <th>數量</th>
+    <th>#</th>
+    <th>Description</th>
+    <th>Quantity</th>
   </tr>
-  <tr>
-    <td>1-1</td>
-    <td>MD2402 RHJ600/A 個人安全警報器</td>
-    <td>8 部</td>
-  </tr>
+  <tr><td>001</td><td>維達三摺式抹手紙(16包/箱)</td><td>30 箱</td></tr>
+  <tr><td>002</td><td>維達廁紙 藍色</td><td>60 條</td></tr>
+  <tr><td>003</td><td>維達面紙(60盒/箱)</td><td>6 箱</td></tr>
+  <tr><td>004</td><td>汽車香座香片</td><td>6 個</td></tr>
+  <tr><td>005</td><td>口罩(獨立包裝)</td><td>10 盒</td></tr>
+  <tr><td>006</td><td>藥水膠布100片/盒</td><td>2 盒</td></tr>
+  <tr><td>007</td><td>防疫面罩(洗廁所用)</td><td>10 個</td></tr>
+  <tr><td>008</td><td>透明膠水壺(2.8L)</td><td>2 個</td></tr>
+  <tr><td>009</td><td>洗潔精(斧頭牌泵裝)</td><td>3 支</td></tr>
+  <tr><td>010</td><td>香必飄空氣清新噴霧(薰衣草味)</td><td>5 支</td></tr>
+  <tr><td>011</td><td>潔廁得</td><td>16 支</td></tr>
+  <tr><td>012</td><td>思高海綿百潔布(3M長抗菌)</td><td>10 件</td></tr>
+  <tr><td>013</td><td>高樂氏漂白水(3L)(大)</td><td>10 支</td></tr>
+  <tr><td>014</td><td>金寶鐘綠水(3L)</td><td>2 支</td></tr>
+  <tr><td>015</td><td>紅威寶(泵裝)</td><td>3 支</td></tr>
+  <tr><td>016</td><td>滴露消毒噴霧</td><td>5 支</td></tr>
+  <tr><td>017</td><td>滴露消毒濕紙巾</td><td>17 筒</td></tr>
+  <tr><td>018</td><td>NAXOS 酒精噴霧(可皮膚)</td><td>15 支</td></tr>
+  <tr><td>019</td><td>威露士洗手皂液</td><td>12 支</td></tr>
+  <tr><td>020</td><td>地拖頭 遮棍(釘頭)</td><td>2 支</td></tr>
+  <tr><td>021</td><td>掃把頭 (螺絲頭)</td><td>2 支</td></tr>
+  <tr><td>022</td><td>細毛巾(白色)</td><td>12 條</td></tr>
+  <tr><td>023</td><td>思高Scotch-Brite 吸水抹布</td><td>2 包</td></tr>
+  <tr><td>024</td><td>菊花牌膠手套(中碼) 紅色</td><td>6 對</td></tr>
+  <tr><td>025</td><td>菊花牌膠手套(中碼) 黃色</td><td>4 對</td></tr>
+  <tr><td>026</td><td>36" X 48" 黑色垃圾袋100個/包 厚身</td><td>3 包</td></tr>
+  <tr><td>027</td><td>水鞋(38碼)</td><td>1 對</td></tr>
+  <tr><td>028</td><td>透明即棄膠手套(100只/盒)(白色M碼)</td><td>11 盒</td></tr>
+  <tr><td>029</td><td>大垃圾桶連蓋16" X 17" X 24" (45L) 腳踏灰色</td><td>4 個</td></tr>
 </table>
 
-Total : 1 箱
-
-Client Authorized Signature & Chop
-*Please fax back to 30209751 after confirmation.
+to be Continued
     """
-    prompt = generate_prompt(ocr_text, "")
+    prompt = generate_prompt(ocr_text, "delivery_note")
     # 创建消息列表
     messages = [
         {"role": "user", "content": prompt},
