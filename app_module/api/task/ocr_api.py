@@ -56,7 +56,7 @@ async def create_ocr_task(
         }
         task_mapper.create_task(task_data)
 
-        background_tasks.add_task(process_ocr_task_async, task_id, param.file_url)
+        background_tasks.add_task(process_ocr_task_async, task_id, param.file_url, param.merge_mode)
     except Exception as e:
         logger.error(f"OCR任务创建失败: {str(e)}")
         return {

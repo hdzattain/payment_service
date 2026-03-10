@@ -38,11 +38,12 @@ config_path = os.path.join('app_module', 'rule_engine', 'config', 'rules_config.
 config_loader.load_from_json(config_path)
 
 
-async def process_ocr_task_async(task_id: str, file_url: str) -> None:
+async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool = False) -> None:
     """
     异步处理OCR任务
     - task_id: 任务ID
     - file_url: PDF文件URL
+    - merge_mode: 是否启用合并模式
     """
     # 1. 更新任务状态为执行中
     with SessionLocal() as db:
@@ -71,6 +72,7 @@ async def process_ocr_task_async(task_id: str, file_url: str) -> None:
             update_data = {
                 "file_page": pdf_split_result.get("total_pages", 0),
                 "local_path": download_file,
+                "merge_mode": 1 if merge_mode else 0,
                 "status": 1  # 执行中
             }
             task_mapper.update_task(task_id, update_data)
@@ -98,8 +100,49 @@ async def process_ocr_task_async(task_id: str, file_url: str) -> None:
         semaphore = asyncio.Semaphore(MAX_WORKERS)
 
         # 创建并发任务
-        tasks = [process_single_page_ocr(task_id, page_info, semaphore) for page_info in pages]
+        tasks = [process_single_page_ocr(task_id, page_info, semaphore, merge_mode) for page_info in pages]
         await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 判断是否需要合并
+        if merge_mode:
+            # 合并流程
+            logger.info(f"开始合并处理: task_id={task_id}")
+            from app_module.services.merge_service import merge_pages_data
+            merged_data = await merge_pages_data(task_id)
+            
+            # 更新数据库
+            with SessionLocal() as db:
+                detail_mapper = OcrTaskDetailMapper(db)
+                for page_no, merged in merged_data.items():
+                    update_data = {
+                        'structured_data': json.dumps(merged, ensure_ascii=False)
+                    }
+                    detail_mapper.update_task_detail(task_id, page_no, update_data)
+            
+            # 合并模式下，发送合并后的回调
+            with SessionLocal() as db:
+                task_mapper = OcrTaskMapper(db)
+                detail_mapper = OcrTaskDetailMapper(db)
+                
+                # 查询任务信息
+                task_info = task_mapper.get_task_by_id(task_id)
+                
+                if task_info:
+                    # 获取合并后的详情记录
+                    task_details = detail_mapper.get_task_details_by_task_id(task_id)
+                    
+                    # 按group_id分组，每组发送一次回调
+                    groups = {}
+                    for detail in task_details:
+                        group_id = detail.group_id or detail.page_no
+                        if group_id not in groups:
+                            groups[group_id] = []
+                        groups[group_id].append(detail)
+                    
+                    # 为每组发送回调
+                    for group_id, group_details in groups.items():
+                        first_detail = group_details[0]
+                        send_callback_message(task_id, first_detail.page_no)
 
         # 更新主任务状态为完成
         with SessionLocal() as db:
@@ -228,7 +271,7 @@ def send_callback_message(task_id, page_number):
             logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
 
 
-async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyncio.Semaphore):
+async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):
     """
     处理单页OCR识别
     :param task_id: 任务ID
@@ -272,6 +315,12 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             llm_structured_data = structured_response.get("llm_structured_data", None)
             regex_structured_data = structured_response.get("regex_structured_data", None)
 
+            # 提取 group_id
+            group_id = None
+            if structured_data:
+                document_no = structured_data.get('document_no', '')
+                group_id = document_no
+
             # 更新详情记录中的OCR文本和状态
             with SessionLocal() as db:
                 detail_mapper = OcrTaskDetailMapper(db)
@@ -285,6 +334,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                         json.dumps(llm_structured_data, ensure_ascii=False) if llm_structured_data else None,
                     "regex_structured_data":
                         json.dumps(regex_structured_data, ensure_ascii=False) if regex_structured_data else None,
+                    "group_id": group_id,
                     "status": 2  # 执行成功
                 }
                 detail_mapper.update_task_detail(task_id, page_number, update_data)
@@ -302,9 +352,10 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 }
                 detail_mapper.update_task_detail(task_id, page_info["page_number"], update_data)
         finally:
-            # 无论成功或失败都发送回调
-            logger.info(f"發送回調信息: task_id={task_id}, page={page_info['page_number']}")
-            send_callback_message(task_id, page_info['page_number'])
+            # 只有非合并模式才发送单页回调
+            if not merge_mode:
+                logger.info(f"發送回調信息: task_id={task_id}, page={page_info['page_number']}")
+                send_callback_message(task_id, page_info['page_number'])
 
 
 def extract_receipts_form_data(ocr_text):

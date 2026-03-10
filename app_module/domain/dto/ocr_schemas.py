@@ -7,3 +7,4 @@ class CreateOCRRequest(BaseModel):
     foreign_id: str
     callback_url: str
     file_url: str
+    merge_mode: bool = False
