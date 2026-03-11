@@ -690,38 +690,29 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
 def merge_structured_data_with_llm(regex_structured_data: dict, ocr_text: str, document_type: str,
                                    threshold: float = 85.0) -> tuple[dict, dict[str, Any] | None]:
     """
-    根据识别率阈值决定是否使用LLM辅助处理，并合并数据
-
-    Args:
-        regex_structured_data: 规则引擎提取的结构化数据
-        ocr_text: OCR文本内容
-        document_type: 文档类型
-        threshold: 识别率阈值，默认85%
-
+    使用LLM辅助处理，并合并数据
     Returns:
         合并后的结构化数据
     """
-    recognition_rate = calculate_recognition_rate(regex_structured_data, document_type)
     llm_structured_data = None
     # 创建规则引擎数据的深拷贝，避免修改原始数据
     structured_data = json.loads(json.dumps(regex_structured_data))
 
-    if recognition_rate < threshold:
-        logger.warning(f'识别率低于{threshold}% ({recognition_rate:.2f}%), 使用LLM辅助处理')
-        try:
-            llm_structured_data = extract_data_with_llm(ocr_text, document_type)
-        except Exception as e:
-            logger.error(f"LLM提取数据时发生错误: {e}", exc_info=True)
-            llm_structured_data = None  # 出错时赋值为None，继续执行
+    logger.warning(f'使用LLM辅助处理')
+    try:
+        llm_structured_data = extract_data_with_llm(ocr_text, document_type)
+    except Exception as e:
+        logger.error(f"LLM提取数据时发生错误: {e}", exc_info=True)
+        llm_structured_data = None  # 出错时赋值为None，继续执行
 
-        # 合并LLM数据，以llm_structured_data数据为准
-        if llm_structured_data:
-            try:
-                # 遍历LLM提取的数据，优先使用LLM的数据覆盖structured_data
-                for key, value in llm_structured_data.items():
-                    structured_data[key] = value  # 直接覆盖，以LLM结果为准
-            except Exception as e:
-                logger.error(f"合并LLM数据时发生错误: {e}", exc_info=True)
+    # 合并LLM数据，以llm_structured_data数据为准
+    if llm_structured_data:
+        try:
+            # 遍历LLM提取的数据，优先使用LLM的数据覆盖structured_data
+            for key, value in llm_structured_data.items():
+                structured_data[key] = value  # 直接覆盖，以LLM结果为准
+        except Exception as e:
+            logger.error(f"合并LLM数据时发生错误: {e}", exc_info=True)
 
     return structured_data, llm_structured_data
 

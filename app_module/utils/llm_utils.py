@@ -57,7 +57,7 @@ class DeepSeekAPI:
             **kwargs
         }
 
-        response = requests.post(url, headers=self.headers, json=payload)
+        response = requests.post(url, headers=self.headers, json=payload, timeout=60)
 
         if response.status_code == 200:
             return response.json()
