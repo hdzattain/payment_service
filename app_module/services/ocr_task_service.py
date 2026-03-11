@@ -330,6 +330,8 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                     "document_type": document_type,
                     "structured_data":
                         json.dumps(structured_data, ensure_ascii=False) if structured_data else None,
+                    "single_structured_data":
+                        json.dumps(structured_data, ensure_ascii=False) if structured_data else None,
                     "llm_structured_data":
                         json.dumps(llm_structured_data, ensure_ascii=False) if llm_structured_data else None,
                     "regex_structured_data":

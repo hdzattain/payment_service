@@ -38,6 +38,7 @@ class OcrTaskDetail(Base):
     status = Column(SmallInteger, default=0, comment='执行状态 0-待执行、1-执行中、2-执行成功、3-执行失败')
     ocr_text = Column(Text, comment='OCR识别内容类型')
     structured_data = Column(Text, comment='结构化数据JSON')
+    single_structured_data = Column(Text, comment='单页结构化提取数据')
     llm_structured_data = Column(Text, comment='LLM结构化提取数据')
     regex_structured_data = Column(Text, comment='规则匹配结构化提取数据')
     create_id = Column(String(255), default='1000000000000', comment='创建者id')
