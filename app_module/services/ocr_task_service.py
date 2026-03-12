@@ -141,8 +141,8 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
                     
                     # 为每组发送回调
                     for group_id, group_details in groups.items():
-                        first_detail = group_details[0]
-                        send_callback_message(task_id, first_detail.page_no)
+                        page_numbers = [detail.page_no for detail in group_details]
+                        send_callback_message(task_id, page_numbers)
 
         # 更新主任务状态为完成
         with SessionLocal() as db:
@@ -167,6 +167,11 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
 
 
 def send_callback_message(task_id, page_number):
+    """
+    发送回调消息
+    :param task_id: 任务ID
+    :param page_number: 页码，合并模式下为列表，非合并模式下为整数
+    """
     with SessionLocal() as db:
         task_mapper = OcrTaskMapper(db)
         detail_mapper = OcrTaskDetailMapper(db)
@@ -178,7 +183,7 @@ def send_callback_message(task_id, page_number):
             logger.error(f"未找到任务信息: task_id={task_id}")
             return
 
-        logger.info(f"开始构建回调数据，任务ID: {task_id}")  # 新增日志
+        logger.info(f"开始构建回调数据，任务ID: {task_id}")
         # 构建回调数据
         callback_data = {
             "task_id": task_info.task_id,
@@ -191,7 +196,7 @@ def send_callback_message(task_id, page_number):
 
         # 查询task_id的全部status和页码信息和document_type
         task_details = detail_mapper.get_task_details_by_task_id(task_id)
-        logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")  # 新增日志
+        logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")
 
         # 判断所有详情的status是否都为2（执行成功）
         overall_status = task_info.status  # 默认使用原状态
@@ -209,22 +214,42 @@ def send_callback_message(task_id, page_number):
                 overall_status = 1  # 执行中
         callback_data.update({"status": overall_status})
 
-        # 如果提供了页码，查询详情信息
-        if page_number is not None:
-            detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
-            logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")  # 新增日志
+        # 处理页码信息
+        if isinstance(page_number, list):
+            # 合并模式：page_no为数组格式
+            first_page_no = page_number[0] if page_number else None
+            if first_page_no is not None:
+                detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
+                logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
 
-            if detail_info:
-                items = {
-                    "page_no": detail_info.page_no,
-                    "raw": detail_info.structured_data,
-                    "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
-                                                                                    'isoformat') else str(
-                        detail_info.create_datetime)}
+                if detail_info:
+                    items = {
+                        "page_no": page_number,
+                        "raw": detail_info.structured_data,
+                        "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
+                                                                                        'isoformat') else str(
+                            detail_info.create_datetime)}
 
-                callback_data.update({
-                    "items": items
-                })
+                    callback_data.update({
+                        "items": items
+                    })
+        else:
+            # 非合并模式：page_no为单个值
+            if page_number is not None:
+                detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
+                logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
+
+                if detail_info:
+                    items = {
+                        "page_no": detail_info.page_no,
+                        "raw": detail_info.structured_data,
+                        "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
+                                                                                        'isoformat') else str(
+                            detail_info.create_datetime)}
+
+                    callback_data.update({
+                        "items": items
+                    })
         callback_url = task_info.callback_url
         logger.info(f"回调URL: {callback_url}")  # 新增日志
         # # 打印回调参数
