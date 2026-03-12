@@ -1,10 +1,19 @@
+import os
 from fastapi import FastAPI
 
 from app_module.api.auth import ocr_auth
 from app_module.api.task import ocr_api
 from app_module.core.exception_handlers import custom_exception_handler
 from app_module.core.exceptions import CustomException
-from app_module.core.unified_response import UnifiedResponseMiddleware
+
+# 设置时区为东八区（中国标准时间）
+os.environ['TZ'] = 'Asia/Shanghai'
+try:
+    import time
+    # Unix/Linux/Mac 系统生效
+    time.tzset()
+except (AttributeError, OSError):
+    pass
 
 # 创建FastAPI实例
 app = FastAPI(
@@ -17,16 +26,12 @@ app = FastAPI(
 # 添加自定义异常处理
 app.add_exception_handler(CustomException, custom_exception_handler)
 
-
-
-
 # 注册接口路由（版本v1）
 app.include_router(
     ocr_auth.router,
     prefix="/client",
     tags=["授权管理"]
 )
-
 
 app.include_router(
     ocr_api.router,
