@@ -70,20 +70,10 @@ def merge_structured_fields(pages: list) -> Dict[str, Any]:
 
 
 def calculate_merged_total_amount(pages: list) -> str:
-    total = 0.0
-    has_total_amount = False
-    
     for page_data in pages:
         total_amount_str = page_data['structured_data'].get('total_amount', '')
         if total_amount_str and str(total_amount_str).strip():
-            try:
-                total += float(total_amount_str)
-                has_total_amount = True
-            except (ValueError, TypeError):
-                continue
-    
-    if has_total_amount:
-        return f"{round(total, 2)}"
+            return f"{round(float(total_amount_str), 2)}"
     
     all_products = []
     for page_data in pages:
