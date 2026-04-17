@@ -13,6 +13,12 @@ INVOICE_PROMPT = """
    - 金额/单价值：保留数字格式（含小数点，如12200.00）；
 3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测任何信息；
 4. 嵌套结构：严格按照层级嵌套，supplier对应供应商信息，product_service对应产品/服务项目。
+5. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
 
 ## 示例案例（帮助理解任务）
 ### 案例 1：
@@ -267,7 +273,7 @@ Total: HK$ 8,140.00
     "amount": "字符串（可选，金额）",
     "contract_no": "字符串（合约编号）"
   }},
-  "currency": "字符串（可选，币种，如：人民币/USD）",
+  "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "total_amount": "字符串（可选，总金额）"
 }}
 
@@ -293,6 +299,12 @@ RECEIPTS_PROMPT = """
    - 金额/单价值：保留数字格式（含小数点，如12200.00）；
    - 名称/分类字段：保留**原文完整内容**（含括号内英文/编码，如將軍澳海水化淡廠第一階段(CDX)、安全環保用品(U01)）；
 5. 业务字段映射：严格按建筑行业物资付款单定义提取，**字段值与单据业务含义完全匹配**（如site_name=地盘名称、vendor_name=客商名称）。
+6. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
 
 ## 示例案例（帮助理解任务）
 ### 案例 1：
@@ -498,7 +510,7 @@ RECEIPTS_PROMPT = """
     "invoice_date": "2023-12-04",
     "payment_method": "支票",
     "total_amount": "19216.00",
-    "currency": "港元",
+    "currency": "HKD",
     "delivery_note_no": "",
     "invoice_no": "23/005008，23/005012",
     "remarks": "54010102"
@@ -560,6 +572,12 @@ DELIVERY_NOTE_PROMPT = """
    - 日期统一转换为yyyy-MM-dd格式（如"04 December, 2023"转换为"2023-12-04"）；
    - 币种保留原始文本（如HKD/人民币）；
    - 地址/名称保留中英文混合原始格式，不做翻译或修改。
+5. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
    
 ## 示例案例（帮助理解任务）
 ### 案例 1：
@@ -678,7 +696,7 @@ to be Continued
       "amount": "字符串（金額，如：未提供則留空）"
     }}
   ],
-  "currency": "字符串（幣種，如：未提供則留空）",
+  "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "total_amount": "字符串（送貨單總金額，如：未提供則留空）"
 }}
 
@@ -875,6 +893,12 @@ TRANSACTION_RECORD_PROMPT = """
    - 日期字段统一转换为**yyyy-MM-dd**格式；
    - 时间字段统一转换为**yyyy-MM-dd HH:mm:ss**格式；
    - 金额/单价值：保留数字格式（含小数点，如12200.00）；
+5. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
    
 ## 示例案例（帮助理解任务）
 ### 案例 1：
@@ -1071,14 +1095,14 @@ CHINA STATE - STEC JOINT VENTURE
   "originating_account_name": "字符串（發起賬戶名稱，如：CHINA STATE - STECJOINT VENTURE）",
   "effective_date": "字符串（生效日期，如：2025-12-10）",
   "transaction_count": "字符串（交易筆數，如：1）",
-  "currency": "字符串（幣種，如：HKD）",
+  "currency": "字符串（可选，幣種，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "total_amount": "字符串（總金額，如：122206.00）",
   "cheque_number": "字符串（支票號碼）",
   "transactions": [
     {{
       "destination_account_number": "字符串（目標帳戶號碼，如：004111418042001）",
       "destination_account_name": "字符串（目標帳戶號碼名稱，如：Construction Industry Council）",
-      "currency": "字符串（幣種，如：HKD）",
+      "currency": "字符串（可选，幣種，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
       "amount": "字符串（金額，如：122206.00）",
       "reference": "字符串（參考號，如：Y2025121001）",
       "remark": "字符串（備注，如：DN3418712）"
