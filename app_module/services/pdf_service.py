@@ -14,7 +14,7 @@ from app_module.logger.logger_config import setup_logger
 logger = setup_logger("pdf_service")
 
 
-async def split_pdf(file, output_dir, max_concurrent=3) -> Dict[str, Any]:
+async def split_pdf(file, output_dir, max_concurrent=6) -> Dict[str, Any]:
     """
     批量并行处理PDF分割（IO密集型优化）
     :param file: PDF文件对象

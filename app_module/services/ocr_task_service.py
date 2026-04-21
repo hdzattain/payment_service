@@ -24,7 +24,7 @@ from app_module.utils.paths_utils import build_storage_paths
 # 初始化日志记录器
 logger = setup_logger("ocr_task_service")
 # 并发数
-MAX_WORKERS = 3
+MAX_WORKERS = 20
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)  # 限制最大线程数
 
 # 创建规则引擎实例
