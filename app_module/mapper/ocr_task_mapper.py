@@ -34,7 +34,7 @@ class OcrTaskMapper:
         """创建任务记录"""
         db_task = OcrTask(**task_data)
         self.db.add(db_task)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_task)
         return db_task
 
@@ -43,7 +43,6 @@ class OcrTaskMapper:
         """批量创建任务"""
         db_tasks = [OcrTask(**task) for task in tasks]
         self.db.bulk_save_objects(db_tasks)
-        self.db.commit()
         return db_tasks
 
     #
@@ -54,7 +53,6 @@ class OcrTaskMapper:
         """更新任务信息"""
         update_data['update_datetime'] = datetime.utcnow()
         rows_affected = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).update(update_data)
-        self.db.commit()
         return rows_affected
 
     @transactional
@@ -64,14 +62,12 @@ class OcrTaskMapper:
             'status': status
         }
         rows_affected = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).update(update_data)
-        self.db.commit()
         return rows_affected
 
     @transactional
     def batch_update_tasks(self, updates: list) -> int:
         """批量更新任务"""
         rows_affected = self.db.bulk_update_mappings(OcrTask, updates)
-        self.db.commit()
         return rows_affected
 
     #
@@ -111,7 +107,6 @@ class OcrTaskMapper:
         db_task = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).first()
         if db_task:
             self.db.delete(db_task)
-            self.db.commit()
             return True
         return False
 
@@ -119,12 +114,10 @@ class OcrTaskMapper:
     def delete_tasks_by_status(self, status: int) -> int:
         """根据状态删除任务"""
         deleted_count = self.db.query(OcrTask).filter(OcrTask.status == status).delete()
-        self.db.commit()
         return deleted_count
 
     @transactional
     def batch_delete_tasks(self, task_ids: list) -> int:
         """批量删除任务"""
         deleted_count = self.db.query(OcrTask).filter(OcrTask.task_id.in_(task_ids)).delete()
-        self.db.commit()
         return deleted_count

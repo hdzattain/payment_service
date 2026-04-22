@@ -5,12 +5,12 @@ from typing import List, Optional
 
 # 交易記錄項目
 class TransactionItem(BaseModel):
-    destination_account_number: str  # 目標帳戶號碼
-    destination_account_name: str  # 目標帳戶號碼名稱
-    currency: str  # 幣種
-    amount: str  # 金額
-    reference: str  # 參考號
-    remark: str  # 備注
+    transactions_destination_account_number: str  # 目標帳戶號碼
+    transactions_destination_account_name: str  # 目標帳戶號碼名稱
+    transactions_currency: str  # 幣種
+    transactions_amount: str  # 金額
+    transactions_reference: str  # 參考號
+    transactions_remark: str  # 備注
 
 
 # 交易記錄響應

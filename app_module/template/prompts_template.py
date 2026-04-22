@@ -5,14 +5,14 @@ INVOICE_PROMPT = """
 1. 输出格式：仅返回合法的JSON字符串，不添加任何解释、备注、示例或额外文字；
 2. 字段要求：
    - 所有字段名称必须与指定结构完全一致（包括大小写、中英文）；
-   - 非Optional字段（如name、supplier_name）若文本中无对应信息，填充为空字符串""；
-   - Optional字段（如unit_price、currency）若无信息，填充为空字符串""；
-   - 数值类型约束：quantity 保留数字格式（无则留空）；
+   - 非Optional字段（如product_service_name、supplier_name）若文本中无对应信息，填充为空字符串""；
+   - Optional字段（如product_service_unit_price、currency）若无信息，填充为空字符串""；
+   - 数值类型约束：product_service_quantity 保留数字格式（无则留空）；
    - 日期字段统一转换为**yyyy-MM-dd**格式；
    - 时间字段统一转换为**yyyy-MM-dd HH:mm:ss**格式；
    - 金额/单价值：保留数字格式（含小数点，如12200.00）；
 3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测任何信息；
-4. 嵌套结构：严格按照层级嵌套，supplier对应供应商信息，product_service对应产品/服务项目。
+4. 嵌套结构：严格按照层级嵌套，product_service对应产品/服务项目；supplier_id、supplier_name为顶层字段。
 5. 币种归一化规则：
    - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
    - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
@@ -73,38 +73,38 @@ TOTAL HKD 18,891.00
     "document_type": "invoice",
     "product_service": [
         {{
-            "name": "025 菊花牌膠手套(中碼) 黃色",
-            "unit_price": "26.0000",
-            "unit": "對",
-            "quantity": "4",
-            "amount": "104.00"
+            "product_service_name": "025 菊花牌膠手套(中碼) 黃色",
+            "product_service_unit_price": "26.0000",
+            "product_service_unit": "對",
+            "product_service_quantity": "4",
+            "product_service_amount": "104.00"
         }},
         {{
-            "name": "026 36\" X 48\" 黑色垃圾袋100個/包 厚身",
-            "unit_price": "250.0000",
-            "unit": "包",
-            "quantity": "3",
-            "amount": "750.00"
+            "product_service_name": "026 36\" X 48\" 黑色垃圾袋100個/包 厚身",
+            "product_service_unit_price": "250.0000",
+            "product_service_unit": "包",
+            "product_service_quantity": "3",
+            "product_service_amount": "750.00"
         }},
         {{
-            "name": "027 水鞋(38碼)",
-            "unit_price": "68.0000",
-            "quantity": "1",
-            "amount": "68.00"
+            "product_service_name": "027 水鞋(38碼)",
+            "product_service_unit_price": "68.0000",
+            "product_service_quantity": "1",
+            "product_service_amount": "68.00"
         }},
         {{
-            "name": "028 透明即棄膠手套(100只/盒)(白色M碼)",
-            "unit_price": "100.0000",
-            "unit": "盒",   
-            "quantity": "11",
-            "amount": "1100.00"
+            "product_service_name": "028 透明即棄膠手套(100只/盒)(白色M碼)",
+            "product_service_unit_price": "100.0000",
+            "product_service_unit": "盒",   
+            "product_service_quantity": "11",
+            "product_service_amount": "1100.00"
         }},
         {{
-            "name": "029 大垃圾桶連蓋16\" X 17\" X 24\" (45L) 腳踏灰色",
-            "unit_price": "180.0000",
-            "unit": "個",
-            "quantity": "4",
-            "amount": "720.00"
+            "product_service_name": "029 大垃圾桶連蓋16\" X 17\" X 24\" (45L) 腳踏灰色",
+            "product_service_unit_price": "180.0000",
+            "product_service_unit": "個",
+            "product_service_quantity": "4",
+            "product_service_amount": "720.00"
         }}
     ],
     "order_contact": [],
@@ -112,13 +112,9 @@ TOTAL HKD 18,891.00
     "total_amount": "18891.00",
     "document_no": "",
     "invoice_date": "",
-    "site_name": "中國建築工程(香港)有限公司(海水化淡廠)",
-    "supplier": {{
-        "supplier_id": "",
-        "supplier_name": "",
-        "address": "",
-        "phone": ""
-    }}
+    "supplier_id": "",
+    "supplier_name": "",
+    "site_name": "中國建築工程(香港)有限公司(海水化淡廠)"
 }}
 
 ### 案例 2：
@@ -207,32 +203,32 @@ Total: HK$ 8,140.00
     "document_type": "invoice",
     "product_service": [
         {{
-            "name": "DPC/GEN/22068/00 ~ 3/4\" 黃風喉 PG0801",
-            "quantity": "3",
-            "unit": "卷",
-            "unit_price": "580.00",
-            "amount": "1740.00"
+            "product_service_name": "DPC/GEN/22068/00 ~ 3/4\" 黃風喉 PG0801",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "580.00",
+            "product_service_amount": "1740.00"
         }},
         {{
-            "name": "~ 1\" 黃風喉PG0803編號(CDX2324)",
-            "quantity": "3",
-            "unit": "卷",
-            "unit_price": "840.00",
-            "amount": "2520.00"
+            "product_service_name": "~ 1\" 黃風喉PG0803編號(CDX2324)",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "840.00",
+            "product_service_amount": "2520.00"
         }},
         {{
-            "name": "^220V 1\" 1/8HP 鶴見牌 水泵Model: Family12(PG0401)編號: CDX2347",
-            "quantity": "2",
-            "unit": "台",
-            "unit_price": "680.00",
-            "amount": "1360.00"
+            "product_service_name": "^220V 1\" 1/8HP 鶴見牌 水泵Model: Family12(PG0401)編號: CDX2347",
+            "product_service_quantity": "2",
+            "product_service_unit": "台",
+            "product_service_unit_price": "680.00",
+            "product_service_amount": "1360.00"
         }},
         {{
-            "name": "^ 1\" 黃風喉 PG0803編號: CDX2378",
-            "quantity": "3",
-            "unit": "卷",
-            "unit_price": "840.00",
-            "amount": "2520.00"
+            "product_service_name": "^ 1\" 黃風喉 PG0803編號: CDX2378",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "840.00",
+            "product_service_amount": "2520.00"
         }}
     ],
     "order_contact": [],
@@ -241,12 +237,8 @@ Total: HK$ 8,140.00
     "site_name": "中國建築工程(香港)有限公司(1511052-05) CDX 將軍澳海水化淡廠第一期(施工)",
     "currency": "HKD",                               
     "total_amount": "8140.00",
-    "supplier": {{
-        "supplier_id": "",
-        "supplier_name": "Hoi Hing Building Materials Co. Limited",
-        "address": "ROOM 306, 3/F., JOIN IN HANG SING CENTRE, 71-75 CONTAINER PORT ROAD, KWAI CHUNG, N.T., HONG KONG",
-        "phone": "2388 0263, 2536 2900"
-    }}
+    "supplier_id": "",
+    "supplier_name": "Hoi Hing Building Materials Co. Limited"
 }}
 
 ## OCR识别文本：
@@ -256,22 +248,18 @@ Total: HK$ 8,140.00
 {{
   "document_type": "字符串（文件类型，固定为\"invoice\"）",
   "document_no": "字符串（文件编号，如：发票号码）",
-  "supplier": {{
-    "supplier_id": "字符串（可选，供应商ID）",
-    "supplier_name": "字符串（供应商名称，无则填""）",
-    "address": "字符串（供应商地址，无则填""）",
-    "phone": "字符串（供应商电话，无则填""）"
-  }},
+  "supplier_id": "字符串（可选，供应商ID）",
+  "supplier_name": "字符串（供应商名称，无则填""）",
   "site_name": "字符串（收取人）",
   "invoice_date": "字符串（发票日期，格式：YYYY-MM-DD，无则填""）",
   "product_service": {{
-    "name": "字符串（产品名称）",
-    "specification": "字符串（产品规格）",
-    "unit": "字符串（计量单位）",
-    "quantity": 數字格式（产品数量，无则填0）,
-    "unit_price": "字符串（可选，单价）",
-    "amount": "字符串（可选，金额）",
-    "contract_no": "字符串（合约编号）"
+    "product_service_name": "字符串（产品名称）",
+    "product_service_specification": "字符串（产品规格）",
+    "product_service_unit": "字符串（计量单位）",
+    "product_service_quantity": 數字格式（产品数量，无则填0）,
+    "product_service_unit_price": "字符串（可选，单价）",
+    "product_service_amount": "字符串（可选，金额）",
+    "product_service_contract_no": "字符串（合约编号）"
   }},
   "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "total_amount": "字符串（可选，总金额）"
@@ -461,44 +449,44 @@ RECEIPTS_PROMPT = """
     "document_type": "receipts",
     "product_service": [
         {{
-            "name": "鐵咀大介刀(PJ3123)",
-            "specification": "",
-            "unit": "把",
-            "quantity": "12.000",
-            "unit_price": "6.000",
-            "amount": "72.00"
+            "product_service_name": "鐵咀大介刀(PJ3123)",
+            "product_service_specification": "",
+            "product_service_unit": "把",
+            "product_service_quantity": "12.000",
+            "product_service_unit_price": "6.000",
+            "product_service_amount": "72.00"
         }},
         {{
-            "name": "普通電池(PL7004)",
-            "specification": "AA，勁量牌，4粒/排",
-            "unit": "排",
-            "quantity": "10.000",
-            "unit_price": "12.650",
-            "amount": "126.50"
+            "product_service_name": "普通電池(PL7004)",
+            "product_service_specification": "AA，勁量牌，4粒/排",
+            "product_service_unit": "排",
+            "product_service_quantity": "10.000",
+            "product_service_unit_price": "12.650",
+            "product_service_amount": "126.50"
         }},
         {{
-            "name": "普通電池(PL7005)",
-            "specification": "AAA，勁量牌，4粒/排",
-            "unit": "排",
-            "quantity": "10.000",
-            "unit_price": "12.650",
-            "amount": "126.50"
+            "product_service_name": "普通電池(PL7005)",
+            "product_service_specification": "AAA，勁量牌，4粒/排",
+            "product_service_unit": "排",
+            "product_service_quantity": "10.000",
+            "product_service_unit_price": "12.650",
+            "product_service_amount": "126.50"
         }},
         {{
-            "name": "工具,小五金,零星電器(PR0100)",
-            "specification": "大垃圾桶連蓋16\"X17\"X24\"(45L)腳踏灰色",
-            "unit": "個",
-            "quantity": "4.000",
-            "unit_price": "180.000",
-            "amount": "720.00"
+            "product_service_name": "工具,小五金,零星電器(PR0100)",
+            "product_service_specification": "大垃圾桶連蓋16\"X17\"X24\"(45L)腳踏灰色",
+            "product_service_unit": "個",
+            "product_service_quantity": "4.000",
+            "product_service_unit_price": "180.000",
+            "product_service_amount": "720.00"
         }},
         {{
-            "name": "工具,小五金,零星電器(PR0100)",
-            "specification": "藥水膠布100片/盒",
-            "unit": "個",
-            "quantity": "2.000",
-            "unit_price": "18.000",
-            "amount": "36.00"
+            "product_service_name": "工具,小五金,零星電器(PR0100)",
+            "product_service_specification": "藥水膠布100片/盒",
+            "product_service_unit": "個",
+            "product_service_quantity": "2.000",
+            "product_service_unit_price": "18.000",
+            "product_service_amount": "36.00"
         }}
     ],
     "site_name": "將軍澳海水化淡廠第一階段(CDX)",
@@ -520,7 +508,7 @@ RECEIPTS_PROMPT = """
 ## OCR识别的物资付款办理单文本：
 {ocr_text}
 
-## 强制遵循的JSON结构（字段名、层级、类型、业务含义完全匹配）
+## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
   "document_type": "字符串（文件类型，固定为\"receipts\"）",
   "site_name": "字符串（地盘名称，如：將軍澳海水化淡廠第一階段(CDX)）",
@@ -534,14 +522,14 @@ RECEIPTS_PROMPT = """
   "current_occurrence": "字符串（本期發生，如：12200.00）",
   "product_service": [
     {{
-      "name": "字符串（材料名称，如：馬路欄河）",
-      "specification": "字符串（规格型号，如：XC0302 2M (L)黃色/橙色）",
-      "delivery_note_no": "字符串（送货单编号，如：SNT2312-0110）",
-      "unit": "字符串（计量单位，如：個）",
-      "quantity": 數字格式（产品数量，數字格式，如100、10.12）,
-      "unit_price": "字符串（单价，如：122.000）",
-      "amount": "字符串（金额，如：12200.00）",
-      "contract_no": "字符串（合约编号，与顶层contract_no一致）"
+      "product_service_name": "字符串（材料名称，如：馬路欄河）",
+      "product_service_specification": "字符串（规格型号，如：XC0302 2M (L)黃色/橙色）",
+      "product_service_delivery_note_no": "字符串（送货单编号，如：SNT2312-0110）",
+      "product_service_unit": "字符串（计量单位，如：個）",
+      "product_service_quantity": 數字格式（产品数量，數字格式，如100、10.12）,
+      "product_service_unit_price": "字符串（单价，如：122.000）",
+      "product_service_amount": "字符串（金额，如：12200.00）",
+      "product_service_contract_no": "字符串（合约编号，与顶层contract_no一致）"
     }}
   ],
   "invoice_no": "字符串（发票号码，如：SNT2312-0110）",
@@ -622,46 +610,42 @@ to be Continued
 {{
   "document_type": "delivery_note",
   "document_no": "D23/005012",
-  "supplier": {{
-    "supplier_id": "",
-    "supplier_name": "",
-    "address": "",
-    "phone": ""
-  }},
+  "supplier_id": "",
+  "supplier_name": "",
   "site_name": "將軍澳海水化淡廠",
   "delivery_date": "2023-12-04",
   "product_service": [
     {{
-      "name": "維達三摺式抹手紙(16包/箱)",
-      "specification": "",
-      "unit": "箱",
-      "quantity": 30,
-      "unit_price": "",
-      "amount": ""
+      "product_service_name": "維達三摺式抹手紙(16包/箱)",
+      "product_service_specification": "",
+      "product_service_unit": "箱",
+      "product_service_quantity": 30,
+      "product_service_unit_price": "",
+      "product_service_amount": ""
     }},
     {{
-      "name": "維達廁紙 藍色",
-      "specification": "",
-      "unit": "條",
-      "quantity": 60,
-      "unit_price": "",
-      "amount": ""
+      "product_service_name": "維達廁紙 藍色",
+      "product_service_specification": "",
+      "product_service_unit": "條",
+      "product_service_quantity": 60,
+      "product_service_unit_price": "",
+      "product_service_amount": ""
     }},
     {{
-      "name": "維達面紙(60盒/箱)",
-      "specification": "",
-      "unit": "箱",
-      "quantity": 6,
-      "unit_price": "",
-      "amount": ""
+      "product_service_name": "維達面紙(60盒/箱)",
+      "product_service_specification": "",
+      "product_service_unit": "箱",
+      "product_service_quantity": 6,
+      "product_service_unit_price": "",
+      "product_service_amount": ""
     }},
     {{
-      "name": "汽車香座香片",
-      "specification": "",
-      "unit": "個",
-      "quantity": 6,
-      "unit_price": "",
-      "amount": ""
+      "product_service_name": "汽車香座香片",
+      "product_service_specification": "",
+      "product_service_unit": "個",
+      "product_service_quantity": 6,
+      "product_service_unit_price": "",
+      "product_service_amount": ""
     }}
   ],
   "currency": "HKD",
@@ -678,22 +662,18 @@ to be Continued
 {{
   "document_type": "字符串（文件类型，固定为\"delivery_note\"）",
   "document_no": "字符串（送貨單編號，如：D22-72035）",
-  "supplier": {{
-    "supplier_id": "字符串（供應商ID，如：未提供則留空）",
-    "supplier_name": "字符串（供應商名稱，如：民光電器行 MAN KWONG ELECTRIC CO.）",
-    "address": "字符串（供應商地址，如：九龍上海街269地下 G/F,269 SHANGHAI ST, KOWLOON, HONG KONG）",
-    "phone": "字符串（供應商電話，如：23852973）"
-  }},
+  "supplier_id": "字符串（供應商ID，如：未提供則留空）",
+  "supplier_name": "字符串（供應商名稱，如：民光電器行 MAN KWONG ELECTRIC CO.）",
   "site_name": "字符串（送貨單收取人，如：中國建築工程(香港)有限公司(1511052-05)CDX 將軍澳海水化淡廠第一期(施工)）",
   "delivery_date": "字符串（送貨單日期，如：30/11/2022）",
   "product_service": [
     {{
-      "name": "字符串（產品名稱，如：大尼龍袋）",
-      "specification": "字符串（產品規格，如：PB1013）",
-      "unit": "字符串（計量單位，如：個）",
-      "quantity": 數字格式（產品數量，如：6000、10.91）,
-      "unit_price": "字符串（單價，如：未提供則留空）",
-      "amount": "字符串（金額，如：未提供則留空）"
+      "product_service_name": "字符串（產品名稱，如：大尼龍袋）",
+      "product_service_specification": "字符串（產品規格，如：PB1013）",
+      "product_service_unit": "字符串（計量單位，如：個）",
+      "product_service_quantity": 數字格式（產品數量，如：6000、10.91）,
+      "product_service_unit_price": "字符串（單價，如：未提供則留空）",
+      "product_service_amount": "字符串（金額，如：未提供則留空）"
     }}
   ],
   "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
@@ -792,39 +772,39 @@ MISC_MATERIALS_APP_PROMPT = """
     "document_type": "misc_materials_app",
     "product_service": [
         {{
-            "name": "M10 x 70mm 拉爆螺絲 (@70粒/盒) PD3502",
-            "specification": "M10 x 70mm",
-            "unit": "盒",
-            "quantity": "2",
-            "contract_no": "PD3502"
+            "product_service_name": "M10 x 70mm 拉爆螺絲 (@70粒/盒) PD3502",
+            "product_service_specification": "M10 x 70mm",
+            "product_service_unit": "盒",
+            "product_service_quantity": "2",
+            "product_service_contract_no": "PD3502"
         }},
         {{
-            "name": "M12 x 75mm 拉爆螺絲 (@40粒/盒) PD3505",
-            "specification": "M12 x 75mm",
-            "unit": "盒",
-            "quantity": "2",
-            "contract_no": "PD3505"
+            "product_service_name": "M12 x 75mm 拉爆螺絲 (@40粒/盒) PD3505",
+            "product_service_specification": "M12 x 75mm",
+            "product_service_unit": "盒",
+            "product_service_quantity": "2",
+            "product_service_contract_no": "PD3505"
         }},
         {{
-            "name": "玻璃膠槍 PJ6902",
-            "specification": "",
-            "unit": "支",
-            "quantity": "5",
-            "contract_no": "PJ6902"
+            "product_service_name": "玻璃膠槍 PJ6902",
+            "product_service_specification": "",
+            "product_service_unit": "支",
+            "product_service_quantity": "5",
+            "product_service_contract_no": "PJ6902"
         }}
     ],
     "order_contact": [
         {{
-            "name": "卓生",
-            "phone": "9138 2007",
-            "fax": null,
-            "email": null
+            "order_contact_name": "卓生",
+            "order_contact_phone": "9138 2007",
+            "order_contact_fax": null,
+            "order_contact_email": null
         }},
         {{
-            "name": "林生",
-            "phone": "9215 3007",
-            "fax": "3010 8232",
-            "email": null
+            "order_contact_name": "林生",
+            "order_contact_phone": "9215 3007",
+            "order_contact_fax": "3010 8232",
+            "order_contact_email": null
         }}
     ],
     "document_no": "CDX3784",
@@ -833,8 +813,8 @@ MISC_MATERIALS_APP_PROMPT = """
     "order_creator": "凡",
     "applicant": "布國強",
     "site_receiver": {{
-        "name": "馮生",
-        "phone": "9249 9108"
+        "site_receiver_name": "馮生",
+        "site_receiver_phone": "9249 9108"
     }}
 }}
 
@@ -849,26 +829,26 @@ MISC_MATERIALS_APP_PROMPT = """
   "date": "字符串（日期，如：2024-03-15）",
   "product_service": [
     {{
-      "name": "字符串（产品/材料名称，如：尼龍扎帶）",
-      "specification": "字符串（规格，如：4×200mm）",
-      "unit": "字符串（单位，如：包/個/米）",
-      "quantity": 數字格式（数量，如100、100.19，无则填0）,
-      "contract_no": "字符串（合约编号，如：DPC/GEN/23033/00）"
+      "product_service_name": "字符串（产品/材料名称，如：尼龍扎帶）",
+      "product_service_specification": "字符串（规格，如：4×200mm）",
+      "product_service_unit": "字符串（单位，如：包/個/米）",
+      "product_service_quantity": 數字格式（数量，如100、100.19，无则填0）,
+      "product_service_contract_no": "字符串（合约编号，如：DPC/GEN/23033/00）"
     }}
   ],
   "order_creator": "字符串（制单人，如：張三）",
   "applicant": "字符串（申请人，如：李四）",
   "order_contact": [
     {{
-      "name": "字符串（订货人姓名，如：王五）",
-      "phone": "字符串（订货人电话，如：9123 4567）",
-      "fax": "字符串（订货人传真，如：3012 3456）",
-      "email": "字符串（订货人邮箱，如：wangwu@xxx.com）"
+      "order_contact_name": "字符串（订货人姓名，如：王五）",
+      "order_contact_phone": "字符串（订货人电话，如：9123 4567）",
+      "order_contact_fax": "字符串（订货人传真，如：3012 3456）",
+      "order_contact_email": "字符串（订货人邮箱，如：wangwu@xxx.com）"
     }}
   ],
   "site_receiver": {{
-    "name": "字符串（地盘收货人姓名，如：趙六）",
-    "phone": "字符串（地盘收货人电话，如：9876 5432）"
+    "site_receiver_name": "字符串（地盘收货人姓名，如：趙六）",
+    "site_receiver_phone": "字符串（地盘收货人电话，如：9876 5432）"
   }}
 }}
 
@@ -957,12 +937,12 @@ iGTB參考號 iGTB Reference: 02121750335
     "total_amount": "122206.00",
     "transactions": [
         {{
-            "destination_account_number": "004111418042001",
-            "destination_account_name": "Construction Industry Council",
-            "currency": "HKD",
-            "amount": "122206.00",
-            "reference": "Y2025121001",
-            "remark": "DN3418712"
+            "transactions_destination_account_number": "004111418042001",
+            "transactions_destination_account_name": "Construction Industry Council",
+            "transactions_currency": "HKD",
+            "transactions_amount": "122206.00",
+            "transactions_reference": "Y2025121001",
+            "transactions_remark": "DN3418712"
         }}
     ]
 }}
@@ -1028,12 +1008,12 @@ HKD 6,754.00
     "total_amount": "6754.00",
     "transactions": [
         {{
-            "destination_account_number": "035047011",
-            "destination_account_name": "環境保護號: 01-小額付款賬單",
-            "currency": "HKD",
-            "amount": "6754.00",
-            "reference": "035047011",
-            "remark": "035047011"
+            "transactions_destination_account_number": "035047011",
+            "transactions_destination_account_name": "環境保護號: 01-小額付款賬單",
+            "transactions_currency": "HKD",
+            "transactions_amount": "6754.00",
+            "transactions_reference": "035047011",
+            "transactions_remark": "035047011"
         }}
     ],
 }}
@@ -1070,12 +1050,12 @@ CHINA STATE - STEC JOINT VENTURE
     "total_amount": "73374.00",
     "transactions": [
         {{
-            "destination_account_number": "",
-            "destination_account_name": "中華電力有限公司",
-            "currency": "HKD",
-            "amount": "73374.00",
-            "reference": "",
-            "remark": ""
+            "transactions_destination_account_number": "",
+            "transactions_destination_account_name": "中華電力有限公司",
+            "transactions_currency": "HKD",
+            "transactions_amount": "73374.00",
+            "transactions_reference": "",
+            "transactions_remark": ""
         }}
     ]
 }}
@@ -1100,12 +1080,12 @@ CHINA STATE - STEC JOINT VENTURE
   "cheque_number": "字符串（支票號碼）",
   "transactions": [
     {{
-      "destination_account_number": "字符串（目標帳戶號碼，如：004111418042001）",
-      "destination_account_name": "字符串（目標帳戶號碼名稱，如：Construction Industry Council）",
-      "currency": "字符串（可选，幣種，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
-      "amount": "字符串（金額，如：122206.00）",
-      "reference": "字符串（參考號，如：Y2025121001）",
-      "remark": "字符串（備注，如：DN3418712）"
+      "transactions_destination_account_number": "字符串（目標帳戶號碼，如：004111418042001）",
+      "transactions_destination_account_name": "字符串（目標帳戶號碼名稱，如：Construction Industry Council）",
+      "transactions_currency": "字符串（可选，幣種，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
+      "transactions_amount": "字符串（金額，如：122206.00）",
+      "transactions_reference": "字符串（參考號，如：Y2025121001）",
+      "transactions_remark": "字符串（備注，如：DN3418712）"
     }}
   ]
 }}

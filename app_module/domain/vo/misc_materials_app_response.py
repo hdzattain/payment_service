@@ -5,25 +5,25 @@ from typing import List, Optional
 
 # 產品或服務項目
 class ProductServiceItem(BaseModel):
-    name: str              # 名稱
-    specification: str     # 規格
-    unit: str              # 單位
-    quantity: int          # 數量
-    contract_no: str       # 合約编號
+    product_service_name: str              # 名稱
+    product_service_specification: str     # 規格
+    product_service_unit: str              # 單位
+    product_service_quantity: int          # 數量
+    product_service_contract_no: str       # 合約编號
 
 
 # 訂貨人項目
 class OrderContactItem(BaseModel):
-    name: str              # 姓名
-    phone: str             # 電話
-    fax: str               # 傳真
-    email: str             # Email
+    order_contact_name: str              # 姓名
+    order_contact_phone: str             # 電話
+    order_contact_fax: str               # 傳真
+    order_contact_email: str             # Email
 
 
 # 地盤收貨人
 class SiteReceiver(BaseModel):
-    name: str              # 姓名
-    phone: str             # 電話
+    site_receiver_name: str              # 姓名
+    site_receiver_phone: str             # 電話
 
 
 # 雜項材料申請表響應

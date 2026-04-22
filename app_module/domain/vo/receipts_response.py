@@ -5,14 +5,14 @@ from typing import List, Optional
 
 # 產品或服務項目
 class ReceiptProductServiceItem(BaseModel):
-    name: str              # 名称 (如: 大尼龍袋)
-    specification: str     # 规格 (如: PB1013)
-    delivery_note_no: str  # 送货单编号
-    unit: str              # 单位 (如: 个)
-    quantity: int          # 数量 (如: 6000)
-    unit_price: Optional[str] = ""  # 单价
-    amount: Optional[str]  # 金额
-    contract_no: str       # 合约编号
+    product_service_name: str              # 名称 (如: 大尼龍袋)
+    product_service_specification: str     # 规格 (如: PB1013)
+    product_service_delivery_note_no: str  # 送货单编号
+    product_service_unit: str              # 单位 (如: 个)
+    product_service_quantity: int          # 数量 (如: 6000)
+    product_service_unit_price: Optional[str] = ""  # 单价
+    product_service_amount: Optional[str]  # 金额
+    product_service_contract_no: str       # 合约编号
 
 
 # 收據響應

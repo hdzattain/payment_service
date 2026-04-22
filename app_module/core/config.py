@@ -25,6 +25,13 @@ class Settings(BaseSettings):
 
     # OCR API配置
     ocr_api_key: str  # 添加缺失的配置项
+    OLMOCR_API_BASE: str = "https://olmocr.c-smart.hk"
+    OCR_MAX_WORKERS: int = 6
+    OCR_SUBMIT_MAX_RETRIES: int = 5
+    OCR_SUBMIT_BACKOFF_SECONDS: float = 2.0
+    OCR_SUBMIT_MAX_BACKOFF_SECONDS: float = 30.0
+    OCR_SUBMIT_MIN_INTERVAL_SECONDS: float = 1.0
+    OCR_STATUS_POLL_INTERVAL_SECONDS: float = 3.0
 
     # 数据库配置
     DB_USER: str
@@ -37,7 +44,7 @@ class Settings(BaseSettings):
     CSCI_DEEPSEEK_API_KEY: str
 
     # 配置.env文件路径
-    model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8", extra="ignore")
 
 
 # 实例化配置对象，供其他模块导入使用

@@ -3,10 +3,13 @@ import shutil
 import requests
 import time
 import os
+import random
+import threading
 import zipfile
 import urllib3
 from pathlib import Path
 
+from app_module.core.config import settings
 from app_module.logger.logger_config import setup_logger
 
 # 初始化日志记录器
@@ -16,8 +19,122 @@ logger = setup_logger("olmocr_service")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 配置区 ---
-API_BASE = "https://olmocr.c-smart.hk"
+API_BASE = settings.OLMOCR_API_BASE
 SAVE_DIR = os.path.join(os.getcwd(), "markdown")
+OCR_SUBMIT_MAX_RETRIES = max(0, settings.OCR_SUBMIT_MAX_RETRIES)
+OCR_SUBMIT_BACKOFF_SECONDS = max(0.5, settings.OCR_SUBMIT_BACKOFF_SECONDS)
+OCR_SUBMIT_MAX_BACKOFF_SECONDS = max(
+    OCR_SUBMIT_BACKOFF_SECONDS,
+    settings.OCR_SUBMIT_MAX_BACKOFF_SECONDS
+)
+OCR_SUBMIT_MIN_INTERVAL_SECONDS = max(0.0, settings.OCR_SUBMIT_MIN_INTERVAL_SECONDS)
+OCR_STATUS_POLL_INTERVAL_SECONDS = max(1.0, settings.OCR_STATUS_POLL_INTERVAL_SECONDS)
+
+_submit_lock = threading.Lock()
+_last_submit_at = 0.0
+
+
+def _build_error_response(status_code: int, error: str, task_id=None, ocr_text: str = ""):
+    return {"code": status_code, "status_code": status_code, "error": error, "task_id": task_id, "ocr_text": ocr_text}
+
+
+def _parse_retry_after_seconds(retry_after_value) -> float | None:
+    if not retry_after_value:
+        return None
+
+    try:
+        return max(0.0, float(retry_after_value))
+    except (TypeError, ValueError):
+        logger.warning(f"无法解析 Retry-After 响应头: {retry_after_value}")
+        return None
+
+
+def _calculate_retry_delay(attempt: int, retry_after_value=None) -> float:
+    retry_after_seconds = _parse_retry_after_seconds(retry_after_value)
+    if retry_after_seconds is not None:
+        return retry_after_seconds
+
+    exponential_delay = min(
+        OCR_SUBMIT_MAX_BACKOFF_SECONDS,
+        OCR_SUBMIT_BACKOFF_SECONDS * (2 ** max(0, attempt - 1))
+    )
+    jitter = random.uniform(0, min(1.0, OCR_SUBMIT_BACKOFF_SECONDS))
+    return exponential_delay + jitter
+
+
+def _wait_for_submit_slot():
+    global _last_submit_at
+
+    with _submit_lock:
+        now = time.monotonic()
+        elapsed = now - _last_submit_at
+        wait_seconds = max(0.0, OCR_SUBMIT_MIN_INTERVAL_SECONDS - elapsed)
+
+        if wait_seconds > 0:
+            logger.info(f"OCR提交节流生效，等待 {wait_seconds:.2f}s 后继续提交")
+            time.sleep(wait_seconds)
+
+        _last_submit_at = time.monotonic()
+
+
+def _submit_ocr_request(pdf_file_path: str, file_name: str) -> tuple[dict | None, dict | None]:
+    task_id = None
+
+    for attempt in range(1, OCR_SUBMIT_MAX_RETRIES + 2):
+        try:
+            _wait_for_submit_slot()
+
+            with open(pdf_file_path, 'rb') as file_obj:
+                files_to_upload = [('files', (file_name, file_obj, 'application/pdf'))]
+                response = requests.post(f"{API_BASE}/process", files=files_to_upload, verify=False, timeout=None)
+
+            if response.status_code == 429:
+                if attempt > OCR_SUBMIT_MAX_RETRIES:
+                    logger.error(
+                        f"OCR提交达到限流且重试耗尽: file={file_name}, status_code=429, attempts={attempt}"
+                    )
+                    return None, _build_error_response(429, "OCR服务限流，请稍后重试", task_id=task_id)
+
+                delay = _calculate_retry_delay(attempt, response.headers.get("Retry-After"))
+                logger.warning(
+                    f"OCR提交触发限流(429): file={file_name}, attempt={attempt}, {delay:.2f}s 后重试"
+                )
+                time.sleep(delay)
+                continue
+
+            response.raise_for_status()
+            data = response.json()
+            task_id = data.get('task_id')
+
+            if not task_id or not data.get('check_status_url') or not data.get('download_url'):
+                logger.error(f"OCR提交响应缺少必要字段: file={file_name}, response={data}")
+                return None, _build_error_response(500, "OCR服务返回的数据不完整", task_id=task_id)
+
+            logger.info(f"✅ 任务已提交! Task ID: {task_id}")
+            return data, None
+
+        except requests.exceptions.RequestException as exc:
+            response = getattr(exc, 'response', None)
+            status_code = response.status_code if response is not None else 500
+            retriable = status_code == 429 or status_code >= 500
+
+            if retriable and attempt <= OCR_SUBMIT_MAX_RETRIES:
+                delay = _calculate_retry_delay(attempt, response.headers.get("Retry-After") if response else None)
+                logger.warning(
+                    f"OCR提交异常，准备重试: file={file_name}, status_code={status_code}, attempt={attempt}, error={exc}, delay={delay:.2f}s"
+                )
+                time.sleep(delay)
+                continue
+
+            logger.error(f"❌ 提交失败: file={file_name}, status_code={status_code}, error={exc}")
+            if status_code == 429:
+                return None, _build_error_response(status_code, "OCR服务限流，请稍后重试", task_id=task_id)
+            return None, _build_error_response(status_code, "OlmOcr 任务执行API调用异常！", task_id=task_id)
+        except ValueError as exc:
+            logger.error(f"❌ OCR提交响应JSON解析失败: file={file_name}, error={exc}")
+            return None, _build_error_response(500, "OCR服务返回了无效响应", task_id=task_id)
+
+    return None, _build_error_response(500, "OlmOcr 任务执行API调用异常！", task_id=task_id)
 
 
 def run_ocr_task(pdf_file_path):
@@ -28,12 +145,12 @@ def run_ocr_task(pdf_file_path):
     # 验证输入文件是否存在
     if not os.path.exists(pdf_file_path):
         logger.error(f"❌ 文件不存在: {pdf_file_path}")
-        return {"code": 500, "error": "❌ 文件不存在！", "task_id": None, "ocr_text": ""}
+        return _build_error_response(500, "❌ 文件不存在！")
 
     # 验证是否为 PDF 文件
     if not pdf_file_path.lower().endswith('.pdf'):
         logger.error(f"❌ 文件不是 PDF 格式: {pdf_file_path}")
-        return {"code": 500, "error": "❌ 文件不是 PDF 格式", "task_id": None, "ocr_text": ""}
+        return _build_error_response(500, "❌ 文件不是 PDF 格式")
 
     # 确保输出目录存在
     Path(SAVE_DIR).mkdir(exist_ok=True)
@@ -43,27 +160,13 @@ def run_ocr_task(pdf_file_path):
     # 获取文件名
     file_name = os.path.basename(pdf_file_path)
 
-    # 提交任务
-    files_to_upload = [
-        ('files', (file_name, open(pdf_file_path, 'rb'), 'application/pdf'))
-    ]
+    submit_data, submit_error = _submit_ocr_request(pdf_file_path, file_name)
+    if submit_error:
+        return submit_error
 
-    task_id = None
-    try:
-        # 上传大文件可能耗时较长，这里 timeout 设置为 None 表示不限时
-        response = requests.post(f"{API_BASE}/process", files=files_to_upload, verify=False, timeout=None)
-        response.raise_for_status()
-        data = response.json()
-        task_id = data['task_id']
-        status_url = data['check_status_url']
-        download_url = data['download_url']
-        logger.info(f"✅ 任务已提交! Task ID: {task_id}")
-
-        # 关闭文件句柄
-        files_to_upload[0][1][1].close()
-    except Exception as e:
-        logger.error(f"❌ 提交失败: {e}")
-        return {"code": 500, "error": "OlmOcr 任务执行API调用异常！", "task_id": task_id, "ocr_text": ""}
+    task_id = submit_data['task_id']
+    status_url = submit_data['check_status_url']
+    download_url = submit_data['download_url']
 
     # 轮询状态
     logger.info("⏳ 正在等待服务器处理（支持容错下载模式），请稍候...")
@@ -84,10 +187,10 @@ def run_ocr_task(pdf_file_path):
             elif "failed" in status or "error" in status:
                 logger.info(f"\n❌ 任务发生严重错误（无文件生成）: {status}")
 
-            time.sleep(3)
+            time.sleep(OCR_STATUS_POLL_INTERVAL_SECONDS)
         except Exception as e:
             logger.info(f"\n⚠️ 状态查询异常: {e}")
-            time.sleep(3)
+            time.sleep(OCR_STATUS_POLL_INTERVAL_SECONDS)
 
     # 下载并保存
     zip_path = os.path.join(SAVE_DIR, f"results_{task_id}.zip")
@@ -124,11 +227,11 @@ def run_ocr_task(pdf_file_path):
 
         logger.info(f"✨ 处理成功！📁 原始压缩包: {zip_path}  Markdown 目录: {extract_path} 📝 MD文件内容长度: {len(md_files_content)}")
         # 返回MD文件内容
-        return {"code": 200, "task_id": task_id, "ocr_text": md_files_content}
+        return {"code": 200, "status_code": 200, "task_id": task_id, "ocr_text": md_files_content}
 
     except Exception as e:
         logger.error(f"\n❌ 下载或解压失败: {e}")
-        return {"code": 500, "error": "OlmOcr 任务执行API发生错误", "task_id": task_id, "ocr_text": ""}
+        return _build_error_response(500, "OlmOcr 任务执行API发生错误", task_id=task_id)
     finally:
         if task_id:
             cleanup_temp_files(task_id)

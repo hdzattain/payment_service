@@ -1,12 +1,12 @@
 import asyncio
 import json
-import re
 import os
 import requests
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Tuple, Dict, Any
+from typing import Any
 
+from app_module.core.config import settings
 from app_module.logger.logger_config import setup_logger
 from app_module.mapper.ocr_task_detail_mapper import OcrTaskDetailMapper
 from app_module.mapper.ocr_task_mapper import OcrTaskMapper
@@ -24,8 +24,10 @@ from app_module.utils.paths_utils import build_storage_paths
 # 初始化日志记录器
 logger = setup_logger("ocr_task_service")
 # 并发数
-MAX_WORKERS = 20
+MAX_WORKERS = max(1, settings.OCR_MAX_WORKERS)
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)  # 限制最大线程数
+
+logger.info(f"OCR线程池已初始化: max_workers={MAX_WORKERS}")
 
 # 创建规则引擎实例
 rule_engine = RuleEngine()
@@ -319,8 +321,9 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             )
 
             # 检查OCR任务执行状态
-            if ocr_response.get("status_code") == 500:
-                error_msg = ocr_response.get("error", "未知错误")
+            response_code = ocr_response.get("code", ocr_response.get("status_code", 500))
+            if response_code >= 400:
+                error_msg = ocr_response.get("error", f"未知错误，状态码: {response_code}")
                 logger.error(f"OCR任务执行失败: task_id={task_id}, page={page_number}, error={error_msg}")
                 # 发送飞书通知
                 loop = asyncio.get_event_loop()
@@ -395,11 +398,8 @@ def extract_receipts_form_data(ocr_text):
         "product_service": []
     }
 
-    # 设置规则引擎上下文
-    rule_engine.set_context(ocr_text)
-
-    # 使用规则引擎提取字段
-    extracted_fields = rule_engine.extract_fields(document_type)
+    # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
+    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
 
     # 更新结构化数据
     for field, value in extracted_fields.items():
@@ -433,32 +433,23 @@ def extract_invoice_form_data(ocr_text):
     # 初始化结构化数据
     regex_structured_data = {
         "document_type": document_type,
+        "supplier_id": "",
+        "supplier_name": "",
         "product_service": [],
         "order_contact": []
     }
 
-    # 设置规则引擎上下文
-    rule_engine.set_context(ocr_text)
-
-    # 使用规则引擎提取字段
-    extracted_fields = rule_engine.extract_fields(document_type)
+    # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
+    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取订单联系人信息
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
     extracted_fields['order_contact'] = contact_dict_list
 
-    # 整合供应商信息
-    supplier_info = {
-        "supplier_id": extracted_fields.get('supplier_id', ''),
-        "supplier_name": extracted_fields.get('supplier_name', ''),
-        "address": extracted_fields.get('supplier_address', ''),
-        "phone": extracted_fields.get('supplier_phone', '')
-    }
-
     # 将提取的字段映射到结构化数据
     for field, value in extracted_fields.items():
-        if field == 'supplier_name' or field == 'supplier_address' or field == 'supplier_phone':
-            # 供应商字段已在上方整合，跳过
+        if field == 'supplier_address' or field == 'supplier_phone':
+            # 发票结构中不再输出供应商地址和电话
             continue
         elif field == 'product_service' and isinstance(value, list):
             # 处理产品服务列表格式
@@ -468,9 +459,6 @@ def extract_invoice_form_data(ocr_text):
             regex_structured_data[field] = value
         else:
             regex_structured_data[field] = value
-
-    # 确保供应商信息被添加到结构化数据
-    regex_structured_data['supplier'] = supplier_info
 
     logger.info(f'\n提取的发票结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
@@ -498,11 +486,8 @@ def extract_delivery_note_data(ocr_text):
         "order_contact": []
     }
 
-    # 设置规则引擎上下文
-    rule_engine.set_context(ocr_text)
-
-    # 使用规则引擎提取字段
-    extracted_fields = rule_engine.extract_fields(document_type)
+    # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
+    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取订单联系人信息
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
@@ -511,8 +496,9 @@ def extract_delivery_note_data(ocr_text):
     # 更新结构化数据
     for field, value in extracted_fields.items():
         if field == 'supplier' and isinstance(value, dict):
-            # 处理供应商信息格式
-            regex_structured_data[field] = value
+            # 将供应商信息展平到顶层
+            regex_structured_data['supplier_id'] = value.get('supplier_id', '')
+            regex_structured_data['supplier_name'] = value.get('supplier_name', '')
         elif field == 'product_service' and isinstance(value, list):
             # 处理产品服务列表格式
             regex_structured_data[field] = value
@@ -549,11 +535,8 @@ def extract_misc_materials_data(ocr_text):
         "order_contact": []
     }
 
-    # 设置规则引擎上下文
-    rule_engine.set_context(ocr_text)
-
-    # 使用规则引擎提取字段
-    extracted_fields = rule_engine.extract_fields(document_type)
+    # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
+    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取字典数组
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
@@ -598,11 +581,8 @@ def extract_transaction_record_data(ocr_text):
         "transactions": []
     }
 
-    # 设置规则引擎上下文
-    rule_engine.set_context(ocr_text)
-
-    # 使用规则引擎提取字段
-    extracted_fields = rule_engine.extract_fields(document_type)
+    # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
+    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
 
     # 将提取的字段映射到结构化数据
     for field, value in extracted_fields.items():
@@ -654,7 +634,8 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
         "invoice": [
             'document_type',
             'document_no',
-            'supplier',
+            'supplier_id',
+            'supplier_name',
             'site_name',
             'invoice_date',
             'product_service',
@@ -664,7 +645,8 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
         "delivery_note": [
             'document_type',
             'document_no',
-            'supplier',
+            'supplier_id',
+            'supplier_name',
             'site_name',
             'delivery_date',
             'product_service',

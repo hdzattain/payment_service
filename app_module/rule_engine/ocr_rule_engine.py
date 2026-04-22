@@ -34,8 +34,6 @@ class RuleEngine:
 
     def __init__(self):
         self.rules: Dict[str, Dict[str, List[ExtractionRule]]] = {}
-        self.soup: Optional[BeautifulSoup] = None
-        self.ocr_text: str = ""
 
     def add_rule(self, doc_type: str, field_name: str, rule: ExtractionRule):
         """添加提取规则"""
@@ -46,29 +44,42 @@ class RuleEngine:
         self.rules[doc_type][field_name].append(rule)
 
     def set_context(self, ocr_text: str):
-        """设置OCR文本上下文"""
-        self.ocr_text = re.sub(r'<br\s*/?>', '\n', ocr_text, flags=re.IGNORECASE)
-        self.soup = BeautifulSoup(ocr_text, 'html.parser')
+        """设置OCR文本上下文（已弃用，请使用 extract_fields 的 ocr_text 参数）"""
+        self._ocr_text = re.sub(r'<br\s*/?>', '\n', ocr_text, flags=re.IGNORECASE)
+        self._soup = BeautifulSoup(ocr_text, 'html.parser')
 
-    def extract_fields(self, doc_type: str) -> Dict[str, Any]:
-        """根据规则提取字段"""
+    def extract_fields(self, doc_type: str, ocr_text: str = None) -> Dict[str, Any]:
+        """
+        根据规则提取字段（线程安全版本）
+        :param doc_type: 文档类型
+        :param ocr_text: OCR文本，传入时使用局部变量，不修改实例状态
+        """
         if doc_type not in self.rules:
             return {}
 
+        # 线程安全：使用局部变量而非实例状态
+        if ocr_text is not None:
+            local_text = re.sub(r'<br\s*/?>', '\n', ocr_text, flags=re.IGNORECASE)
+            local_soup = BeautifulSoup(ocr_text, 'html.parser')
+        else:
+            # 兼容旧调用方式（先 set_context 再 extract_fields）
+            local_text = getattr(self, '_ocr_text', self.ocr_text if hasattr(self, 'ocr_text') else '')
+            local_soup = getattr(self, '_soup', self.soup if hasattr(self, 'soup') else None)
+
         results = {}
         for field_name, rules in self.rules[doc_type].items():
-            best_result = self._apply_rules(field_name, rules)
+            best_result = self._apply_rules(field_name, rules, local_text, local_soup)
             if best_result:
                 results[field_name] = best_result.value
 
         return results
 
-    def _apply_rules(self, field_name: str, rules: List[ExtractionRule]) -> Optional[ConfidenceResult]:
+    def _apply_rules(self, field_name: str, rules: List[ExtractionRule], ocr_text: str, soup: BeautifulSoup) -> Optional[ConfidenceResult]:
         """应用多个规则，返回最佳结果"""
         confidence_results = []
 
         for rule in rules:
-            result = self._apply_single_rule(rule)
+            result = self._apply_single_rule(rule, ocr_text, soup)
             if result:
                 confidence_results.append(result)
 
@@ -79,28 +90,28 @@ class RuleEngine:
 
         return None
 
-    def _apply_single_rule(self, rule: ExtractionRule) -> Optional[ConfidenceResult]:
+    def _apply_single_rule(self, rule: ExtractionRule, ocr_text: str, soup: BeautifulSoup) -> Optional[ConfidenceResult]:
         """应用单个规则"""
         if rule.rule_type == 'regex':
-            return self._apply_regex_rule(rule)
+            return self._apply_regex_rule(rule, ocr_text)
         elif rule.rule_type == 'css_selector':
-            return self._apply_css_selector_rule(rule)
+            return self._apply_css_selector_rule(rule, soup)
         elif rule.rule_type == 'html_table':
-            return self._apply_html_table_rule(rule)
+            return self._apply_html_table_rule(rule, soup)
         elif rule.rule_type == 'html_table_column':
-            return self._apply_html_table_column_rule(rule)
+            return self._apply_html_table_column_rule(rule, soup)
         else:
             logger.warning(f"未知的规则类型: {rule.rule_type}")
             return None
 
-    def _apply_regex_rule(self, rule: ExtractionRule) -> Optional[ConfidenceResult]:
+    def _apply_regex_rule(self, rule: ExtractionRule, ocr_text: str) -> Optional[ConfidenceResult]:
         """应用正则表达式规则"""
         for pattern_info in rule.patterns:
             pattern = pattern_info['value']
             flags = pattern_info.get('flags', 0)
             mapping = pattern_info.get('mapping', None)
 
-            matches = re.findall(pattern, self.ocr_text, flags)
+            matches = re.findall(pattern, ocr_text, flags)
             if matches:
                 # 如果有mapping配置，使用映射来构建结果
                 if mapping:
@@ -156,11 +167,11 @@ class RuleEngine:
 
         return result
 
-    def _apply_css_selector_rule(self, rule: ExtractionRule) -> Optional[ConfidenceResult]:
+    def _apply_css_selector_rule(self, rule: ExtractionRule, soup: BeautifulSoup) -> Optional[ConfidenceResult]:
         """应用CSS选择器规则"""
         for pattern_info in rule.patterns:
             selector = pattern_info['value']
-            elements = self.soup.select(selector)
+            elements = soup.select(selector)
 
             if elements:
                 values = [elem.get_text(strip=True) for elem in elements]
@@ -178,13 +189,13 @@ class RuleEngine:
                 )
         return None
 
-    def _apply_html_table_rule(self, rule: ExtractionRule) -> Optional[ConfidenceResult]:
+    def _apply_html_table_rule(self, rule: ExtractionRule, soup: BeautifulSoup) -> Optional[ConfidenceResult]:
         """应用HTML表格规则"""
         for pattern_info in rule.patterns:
             table_selector = pattern_info.get('selector', 'table')
             mapping = pattern_info.get('mapping', {})
 
-            table = self.soup.select_one(table_selector)
+            table = soup.select_one(table_selector)
             if table:
                 data = self._extract_table_data(table, mapping)
 
@@ -233,7 +244,7 @@ class RuleEngine:
 
         return data_rows
 
-    def _apply_html_table_column_rule(self, rule: ExtractionRule) -> Optional[ConfidenceResult]:
+    def _apply_html_table_column_rule(self, rule: ExtractionRule, soup: BeautifulSoup) -> Optional[ConfidenceResult]:
         """应用HTML表格列规则 - 提取特定表头对应的列值"""
         for pattern_info in rule.patterns:
             table_selector = pattern_info.get('selector', 'table')
@@ -243,7 +254,7 @@ class RuleEngine:
             if not header_name:
                 continue
 
-            table = self.soup.select_one(table_selector)
+            table = soup.select_one(table_selector)
             if table:
                 # 从表格中提取指定表头对应的列值
                 value = self._extract_table_column_value(table, header_name, row_index)

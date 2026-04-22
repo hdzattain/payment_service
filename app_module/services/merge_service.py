@@ -86,7 +86,7 @@ def calculate_merged_total_amount(pages: list) -> str:
 def calculate_total_amount(products: list) -> str:
     total = 0.0
     for product in products:
-        amount_str = product.get('amount', '0')
+        amount_str = product.get('product_service_amount', '0')
         if amount_str:
             try:
                 total += float(amount_str)

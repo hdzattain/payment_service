@@ -60,20 +60,20 @@ def extract_order_contact_to_dict_list(html_text: str) -> List[Dict[str, Optiona
 
     for i in range(max_count):
         contact_dict = {
-            "name": names[i] if i < len(names) else None,
-            "phone": phones[i] if i < len(phones) else None,
-            "fax": faxes[0] if faxes else None,  # 传真通常是共享的
-            "email": emails[0] if emails else None  # 邮箱通常是共享的
+            "order_contact_name": names[i] if i < len(names) else None,
+            "order_contact_phone": phones[i] if i < len(phones) else None,
+            "order_contact_fax": faxes[0] if faxes else None,  # 传真通常是共享的
+            "order_contact_email": emails[0] if emails else None  # 邮箱通常是共享的
         }
         contact_dict_list.append(contact_dict)
 
     # 兜底：若只有传真/Email无联系人，也生成一个空姓名的字典
     if not contact_dict_list and (faxes or emails):
         contact_dict_list.append({
-            "name": None,
-            "phone": None,
-            "fax": faxes[0] if faxes else None,
-            "email": emails[0] if emails else None
+            "order_contact_name": None,
+            "order_contact_phone": None,
+            "order_contact_fax": faxes[0] if faxes else None,
+            "order_contact_email": emails[0] if emails else None
         })
 
     return contact_dict_list

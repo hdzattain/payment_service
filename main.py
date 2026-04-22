@@ -5,6 +5,7 @@ from app_module.api.auth import ocr_auth
 from app_module.api.task import ocr_api
 from app_module.core.exception_handlers import custom_exception_handler
 from app_module.core.exceptions import CustomException
+from app_module.utils.cleanup_utils import start_cleanup_scheduler
 
 # 设置时区为东八区（中国标准时间）
 os.environ['TZ'] = 'Asia/Shanghai'
@@ -38,6 +39,9 @@ app.include_router(
     prefix="/api/v1/task",
     tags=["任务管理"]
 )
+
+# 启动文件清理定时任务（每24小时执行一次，保留60天内文件）
+start_cleanup_scheduler(interval_hours=24, retention_days=60)
 
 
 # 根路径接口
