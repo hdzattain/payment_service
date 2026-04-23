@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, UTC
-from contextlib import suppress
 from typing import Awaitable, Callable
 
 from app_module.core.config import settings
@@ -30,6 +29,8 @@ class OCRTaskQueueManager:
         self._worker_tasks: list[asyncio.Task] = []
         self._stop_event = asyncio.Event()
         self._running_task_ids: set[str] = set()
+        self._queued_task_times: dict[str, datetime] = {}
+        self._running_task_started_at: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
         self._queue: asyncio.Queue[TaskPayload] = asyncio.Queue(maxsize=self.queue_maxsize)
         self._submitted_notifications = 0
@@ -74,6 +75,8 @@ class OCRTaskQueueManager:
                 return False
 
             self._queue.put_nowait(dict(payload))
+            if task_id:
+                self._queued_task_times[task_id] = datetime.now(UTC)
             self._submitted_notifications += 1
 
         logger.info("收到新OCR任务通知并已入队: task_id=%s", task_id or "unknown")
@@ -93,6 +96,33 @@ class OCRTaskQueueManager:
             "last_claimed_at": self._last_claimed_at,
         }
 
+    def get_task_runtime_status(self, task_id: str) -> dict[str, object]:
+        queued_at = self._queued_task_times.get(task_id)
+        started_at = self._running_task_started_at.get(task_id)
+        now = datetime.now(UTC)
+
+        is_waiting = queued_at is not None
+        is_running = started_at is not None
+
+        queue_position = None
+        if is_waiting:
+            queue_snapshot = list(self._queue._queue)
+            for index, payload in enumerate(queue_snapshot, start=1):
+                if str(payload.get("task_id", "")) == task_id:
+                    queue_position = index
+                    break
+
+        return {
+            "task_id": task_id,
+            "is_waiting_in_queue": is_waiting,
+            "queued_at": queued_at.isoformat() if queued_at else None,
+            "waiting_for_seconds": round((now - queued_at).total_seconds(), 3) if queued_at else None,
+            "queue_position": queue_position,
+            "is_running": is_running,
+            "started_at": started_at.isoformat() if started_at else None,
+            "executing_for_seconds": round((now - started_at).total_seconds(), 3) if started_at else None,
+        }
+
     async def _worker_loop(self, worker_index: int) -> None:
         logger.info("OCR任务worker已启动: worker=%s", worker_index)
         try:
@@ -102,10 +132,13 @@ class OCRTaskQueueManager:
                 task_id = str(payload["task_id"])
 
                 async with self._lock:
+                    self._queued_task_times.pop(task_id, None)
                     self._running_task_ids.add(task_id)
+                    started_at = datetime.now(UTC)
+                    self._running_task_started_at[task_id] = started_at
                     self._claimed_total += 1
                     self._last_claimed_task_id = task_id
-                    self._last_claimed_at = datetime.now(UTC).isoformat()
+                    self._last_claimed_at = started_at.isoformat()
 
                 try:
                     logger.info("OCR任务开始消费: worker=%s, task_id=%s", worker_index, task_id)
@@ -119,12 +152,8 @@ class OCRTaskQueueManager:
                 finally:
                     async with self._lock:
                         self._running_task_ids.discard(task_id)
+                        self._running_task_started_at.pop(task_id, None)
                     self._queue.task_done()
         except asyncio.CancelledError:
             logger.info("OCR任务worker已取消: worker=%s", worker_index)
             raise
-
-
-
-
-

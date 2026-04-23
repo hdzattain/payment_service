@@ -29,6 +29,7 @@ OCR_SUBMIT_MAX_BACKOFF_SECONDS = max(
 )
 OCR_SUBMIT_MIN_INTERVAL_SECONDS = max(0.0, settings.OCR_SUBMIT_MIN_INTERVAL_SECONDS)
 OCR_STATUS_POLL_INTERVAL_SECONDS = max(1.0, settings.OCR_STATUS_POLL_INTERVAL_SECONDS)
+OCR_STATUS_ERROR_FAIL_FAST_SECONDS = max(1, settings.OCR_STATUS_ERROR_FAIL_FAST_SECONDS)
 OCR_STATUS_MAX_WAIT_SECONDS = max(60, settings.OCR_STATUS_MAX_WAIT_SECONDS)
 
 _submit_lock = threading.Lock()
@@ -37,6 +38,11 @@ _last_submit_at = 0.0
 
 def _build_error_response(status_code: int, error: str, task_id=None, ocr_text: str = ""):
     return {"code": status_code, "status_code": status_code, "error": error, "task_id": task_id, "ocr_text": ocr_text}
+
+
+def _is_terminal_error_status(status: object) -> bool:
+    status_text = str(status or "").lower()
+    return any(flag in status_text for flag in ("failed", "error", "not_found"))
 
 
 def _parse_retry_after_seconds(retry_after_value) -> float | None:
@@ -171,30 +177,58 @@ def run_ocr_task(pdf_file_path):
 
     # 轮询状态
     logger.info("⏳ 正在等待服务器处理（支持容错下载模式），请稍候...")
-    start_time = time.time()
+    start_time = time.monotonic()
+    unhealthy_since = None
 
     while True:
+        loop_started_at = time.monotonic()
+        elapsed = int(loop_started_at - start_time)
+        if elapsed >= OCR_STATUS_MAX_WAIT_SECONDS:
+            logger.error(f"⏰ OCR状态轮询超时: task_id={task_id}, elapsed={elapsed}s")
+            return _build_error_response(504, f"OCR状态轮询超时，超过 {OCR_STATUS_MAX_WAIT_SECONDS} 秒", task_id=task_id)
+
         try:
             status_check = requests.get(status_url, verify=False, timeout=30).json()
             status = status_check.get("status")
-
-            elapsed = int(time.time() - start_time)
-            if elapsed >= OCR_STATUS_MAX_WAIT_SECONDS:
-                logger.error(f"⏰ OCR状态轮询超时: task_id={task_id}, elapsed={elapsed}s")
-                return _build_error_response(504, f"OCR状态轮询超时，超过 {OCR_STATUS_MAX_WAIT_SECONDS} 秒", task_id=task_id)
 
             # 使用 \r 实现单行刷新显示进度
             logger.info(f"[已耗时 {elapsed}s] 当前状态: {status}")
 
             if status == "completed":
+                unhealthy_since = None
                 logger.info(f"\n🎉 服务器处理完成 (含容错整理)！准备下载...")
                 break
-            elif "failed" in status or "error" in status:
-                logger.info(f"\n❌ 任务发生严重错误（无文件生成）: {status}")
+            elif _is_terminal_error_status(status):
+                if unhealthy_since is None:
+                    unhealthy_since = loop_started_at
+                unhealthy_elapsed = loop_started_at - unhealthy_since
+                logger.error(
+                    f"\n❌ OCR任务状态持续异常: task_id={task_id}, status={status}, unhealthy_elapsed={unhealthy_elapsed:.1f}s"
+                )
+                if unhealthy_elapsed >= OCR_STATUS_ERROR_FAIL_FAST_SECONDS:
+                    return _build_error_response(
+                        502,
+                        f"OCR任务状态连续异常超过 {OCR_STATUS_ERROR_FAIL_FAST_SECONDS} 秒: {status}",
+                        task_id=task_id,
+                    )
+            else:
+                unhealthy_since = None
 
             time.sleep(OCR_STATUS_POLL_INTERVAL_SECONDS)
         except Exception as e:
-            logger.info(f"\n⚠️ 状态查询异常: {e}")
+            error_time = time.monotonic()
+            if unhealthy_since is None:
+                unhealthy_since = error_time
+            unhealthy_elapsed = error_time - unhealthy_since
+            logger.warning(
+                f"\n⚠️ 状态查询异常: task_id={task_id}, error={e}, unhealthy_elapsed={unhealthy_elapsed:.1f}s"
+            )
+            if unhealthy_elapsed >= OCR_STATUS_ERROR_FAIL_FAST_SECONDS:
+                return _build_error_response(
+                    502,
+                    f"OCR状态查询连续异常超过 {OCR_STATUS_ERROR_FAIL_FAST_SECONDS} 秒: {e}",
+                    task_id=task_id,
+                )
             time.sleep(OCR_STATUS_POLL_INTERVAL_SECONDS)
 
     # 下载并保存

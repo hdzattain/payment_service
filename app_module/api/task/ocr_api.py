@@ -109,15 +109,20 @@ async def create_ocr_task(
 @router.get("/queue/status", summary="查看OCR任务队列状态")
 async def get_ocr_queue_status(
         request: Request,
+        task_id: str | None = None,
 ):
     queue_manager = getattr(request.app.state, "ocr_task_queue", None)
     runtime_stats = queue_manager.get_runtime_stats() if queue_manager is not None else {}
+    task_runtime = None
+    if queue_manager is not None and task_id:
+        task_runtime = queue_manager.get_task_runtime_status(task_id)
 
     return {
         "code": 200,
         "message": "查询成功",
         "data": {
             "queue": runtime_stats,
+            "task": task_runtime,
         }
     }
 

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     OCR_SUBMIT_MAX_BACKOFF_SECONDS: float = 30.0
     OCR_SUBMIT_MIN_INTERVAL_SECONDS: float = 1.0
     OCR_STATUS_POLL_INTERVAL_SECONDS: float = 3.0
+    OCR_STATUS_ERROR_FAIL_FAST_SECONDS: int = 12
     OCR_STATUS_MAX_WAIT_SECONDS: int = 600
 
     # 数据库配置
