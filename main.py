@@ -1,10 +1,13 @@
 import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app_module.api.auth import ocr_auth
 from app_module.api.task import ocr_api
 from app_module.core.exception_handlers import custom_exception_handler
 from app_module.core.exceptions import CustomException
+from app_module.services.ocr_task_queue import OCRTaskQueueManager
 from app_module.utils.cleanup_utils import start_cleanup_scheduler
 
 # 设置时区为东八区（中国标准时间）
@@ -16,12 +19,26 @@ try:
 except (AttributeError, OSError):
     pass
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_cleanup_scheduler(interval_hours=24, retention_days=60)
+
+    queue_manager = OCRTaskQueueManager()
+    app.state.ocr_task_queue = queue_manager
+    await queue_manager.start()
+    try:
+        yield
+    finally:
+        await queue_manager.stop()
+
+
 # 创建FastAPI实例
 app = FastAPI(
     title="AI OCR 与 TRANSTRACK 对接系统",
     description="实现PDF拆分、OCR识别、结构化提取、异步分批回调、飞书异常通知",
     version="1.0.0",
-    debug=True
+    debug=True,
+    lifespan=lifespan,
 )
 
 # 添加自定义异常处理
@@ -39,9 +56,6 @@ app.include_router(
     prefix="/api/v1/task",
     tags=["任务管理"]
 )
-
-# 启动文件清理定时任务（每24小时执行一次，保留60天内文件）
-start_cleanup_scheduler(interval_hours=24, retention_days=60)
 
 
 # 根路径接口

@@ -1,8 +1,8 @@
 import asyncio
-import tempfile
 import urllib.parse
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from urllib.request import url2pathname
 
 import aiohttp
 
@@ -25,11 +25,15 @@ async def download_file_from_url(
     :param default_suffix: 默认文件扩展名
     :return: 临时文件路径
     """
+    local_file_path = resolve_local_file_path(url)
+    if local_file_path is not None:
+        raise ValueError(f"仅支持http/https文件URL，不支持本地文件路径: {local_file_path}")
+
     for attempt in range(max_retries + 1):
         try:
             timeout_config = aiohttp.ClientTimeout(total=timeout)
             async with aiohttp.ClientSession(timeout=timeout_config) as session:
-                async with session.get(url) as response:
+                async with session.request("GET", url) as response:
                     if response.status != 200:
                         raise Exception(f"下载文件失败: {response.status}")
 
@@ -38,14 +42,8 @@ async def download_file_from_url(
                     if not file_suffix:
                         file_suffix = default_suffix
 
-                    # 确保 source_path 是目录路径
-                    if not os.path.isdir(source_path):
-                        # 如果 source_path 不是目录，需要构建完整路径
-                        filename = extract_filename_from_url(url)
-                        full_path = os.path.join(source_path, filename)
-                    else:
-                        filename = extract_filename_from_url(url)
-                        full_path = os.path.join(source_path, filename)
+                    filename = extract_filename_from_url(url)
+                    full_path = build_target_file_path(source_path, filename)
 
                     # 确保目录存在
                     os.makedirs(source_path, exist_ok=True)
@@ -58,11 +56,40 @@ async def download_file_from_url(
                 raise e
             await asyncio.sleep(2 ** attempt)  # 指数退避
 
+    return ""
+
+
+def resolve_local_file_path(url: str) -> str | None:
+    """识别本地文件路径（含 Windows 盘符路径和 file:// URL）。"""
+    if not url:
+        return None
+
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme in {"http", "https"}:
+        return None
+
+    if parsed_url.scheme == "file":
+        decoded_path = urllib.parse.unquote(parsed_url.path or "")
+        if parsed_url.netloc:
+            decoded_path = f"//{parsed_url.netloc}{decoded_path}"
+        local_path = url2pathname(decoded_path)
+        return os.path.normpath(local_path)
+
+    if os.path.exists(url) or os.path.isabs(url) or PureWindowsPath(url).is_absolute():
+        return os.path.normpath(url)
+
+    return None
+
+
+def build_target_file_path(source_path: str, filename: str) -> str:
+    os.makedirs(source_path, exist_ok=True)
+    return os.path.join(source_path, filename)
+
 
 def extract_filename_from_url(url: str) -> str:
     """从URL中提取文件名"""
     parsed_url = urllib.parse.urlparse(url)
-    filename = os.path.basename(parsed_url.path)
+    filename = os.path.basename(urllib.parse.unquote(parsed_url.path))
     if not filename or '.' not in filename:
         # 如果URL中没有文件名，使用默认名称
         return f"downloaded_file{extract_file_extension(url)}"
@@ -78,7 +105,7 @@ def extract_file_extension(url: str, response=None) -> str:
     """
     # 从URL路径中提取扩展名
     parsed_url = urllib.parse.urlparse(url)
-    path = parsed_url.path
+    path = urllib.parse.unquote(parsed_url.path)
     suffix = Path(path).suffix.lower()
 
     if suffix:
@@ -101,3 +128,5 @@ def extract_file_extension(url: str, response=None) -> str:
         }
 
         return mime_to_ext.get(content_type, '')
+
+    return ''

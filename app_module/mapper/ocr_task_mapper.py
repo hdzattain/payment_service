@@ -1,9 +1,20 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from functools import wraps
+from typing import cast
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app_module.domain.po.ocr_models import OcrTask
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _sanitize_task_update_data(update_data: dict) -> dict:
+    valid_columns = set(OcrTask.__table__.columns.keys())
+    return {key: value for key, value in update_data.items() if key in valid_columns}
 
 
 def transactional(func):
@@ -51,7 +62,8 @@ class OcrTaskMapper:
     @transactional
     def update_task(self, task_id: str, update_data: dict) -> int:
         """更新任务信息"""
-        update_data['update_datetime'] = datetime.utcnow()
+        update_data = _sanitize_task_update_data(update_data)
+        update_data['update_datetime'] = utcnow_naive()
         rows_affected = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).update(update_data)
         return rows_affected
 
@@ -65,17 +77,17 @@ class OcrTaskMapper:
         return rows_affected
 
     @transactional
-    def batch_update_tasks(self, updates: list) -> int:
+    def batch_update_tasks(self, updates: list) -> None:
         """批量更新任务"""
-        rows_affected = self.db.bulk_update_mappings(OcrTask, updates)
-        return rows_affected
+        self.db.bulk_update_mappings(OcrTask.__mapper__, updates)
 
     #
     # 查询操作
     #
-    def get_task_by_id(self, task_id: str) -> OcrTask:
+    def get_task_by_id(self, task_id: str) -> OcrTask | None:
         """根据任务ID查询单个任务"""
-        return self.db.query(OcrTask).filter(OcrTask.task_id == task_id).first()
+        task = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).first()
+        return cast(OcrTask | None, task)
 
     def get_tasks_by_status(self, status: int) -> list:
         """根据状态查询任务列表"""
@@ -92,6 +104,73 @@ class OcrTaskMapper:
     def count_tasks_by_status(self, status: int) -> int:
         """统计指定状态的任务数量"""
         return self.db.query(OcrTask).filter(OcrTask.status == status).count()
+
+    def count_tasks_by_statuses(self, statuses: list[int]) -> int:
+        """统计多个状态的任务数量"""
+        return self.db.query(OcrTask).filter(OcrTask.status.in_(statuses)).count()
+
+    def get_task_status_summary(self) -> dict[int, int]:
+        """按状态统计任务数量"""
+        rows = (
+            self.db.query(OcrTask.status, func.count(OcrTask.id))
+            .group_by(OcrTask.status)
+            .all()
+        )
+        summary = {status: 0 for status in (0, 1, 2, 3, 4)}
+        for status, count in rows:
+            summary[int(status)] = int(count)
+        return summary
+
+    def claim_next_pending_task(self, candidate_limit: int = 20) -> OcrTask | None:
+        """原子抢占下一个待执行任务，多进程环境下只有一个消费者可以成功抢到。"""
+        candidate_limit = max(1, candidate_limit)
+        candidates = (
+            self.db.query(OcrTask.task_id)
+            .filter(OcrTask.status == 0)
+            .order_by(OcrTask.create_datetime.asc(), OcrTask.id.asc())
+            .limit(candidate_limit)
+            .all()
+        )
+
+        for candidate in candidates:
+            task_id = candidate.task_id
+            rows_affected = (
+                self.db.query(OcrTask)
+                .filter(OcrTask.task_id == task_id, OcrTask.status == 0)
+                .update({
+                    "status": 1,
+                    "update_datetime": utcnow_naive(),
+                })
+            )
+            if rows_affected:
+                self.db.commit()
+                return self.get_task_by_id(task_id)
+
+        self.db.rollback()
+        return None
+
+    def heartbeat_running_task(self, task_id: str) -> bool:
+        """为执行中的任务续租，避免被误判为僵尸任务。"""
+        rows_affected = (
+            self.db.query(OcrTask)
+            .filter(OcrTask.task_id == task_id, OcrTask.status == 1)
+            .update({"update_datetime": utcnow_naive()})
+        )
+        self.db.commit()
+        return rows_affected > 0
+
+    def requeue_stale_running_tasks(self, stale_before: datetime) -> int:
+        """将长时间未续租的执行中任务重新置回待执行。"""
+        rows_affected = (
+            self.db.query(OcrTask)
+            .filter(OcrTask.status == 1, OcrTask.update_datetime < stale_before)
+            .update({
+                "status": 0,
+                "update_datetime": utcnow_naive(),
+            }, synchronize_session=False)
+        )
+        self.db.commit()
+        return rows_affected
 
     def exists_task(self, task_id: str) -> bool:
         """检查任务是否存在"""

@@ -22,6 +22,11 @@ def transactional(func):
     return wrapper
 
 
+def _sanitize_task_detail_update_data(update_data: dict) -> dict:
+    valid_columns = set(OcrTaskDetail.__table__.columns.keys())
+    return {key: value for key, value in update_data.items() if key in valid_columns}
+
+
 class OcrTaskDetailMapper:
     def __init__(self, db: Session):
         self.db = db
@@ -44,12 +49,25 @@ class OcrTaskDetailMapper:
         self.db.bulk_save_objects(db_task_details)
         return db_task_details
 
+    @transactional
+    def replace_task_details(self, task_id: str, task_details: list) -> int:
+        """按任务ID重建详情记录，避免同一任务重跑时产生重复页记录。"""
+        self.db.query(OcrTaskDetail).filter(OcrTaskDetail.task_id == task_id).delete(synchronize_session=False)
+
+        if not task_details:
+            return 0
+
+        db_task_details = [OcrTaskDetail(**task_detail) for task_detail in task_details]
+        self.db.bulk_save_objects(db_task_details)
+        return len(db_task_details)
+
     #
     # 更新操作
     #
     @transactional
     def update_task_detail(self, task_id: str, page_no: int, update_data: dict) -> int:
         """更新任务详情信息"""
+        update_data = _sanitize_task_detail_update_data(update_data)
         update_data['update_datetime'] = datetime.utcnow()
         rows_affected = self.db.query(OcrTaskDetail).filter(
             OcrTaskDetail.task_id == task_id,

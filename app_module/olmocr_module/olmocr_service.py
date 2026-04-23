@@ -29,6 +29,7 @@ OCR_SUBMIT_MAX_BACKOFF_SECONDS = max(
 )
 OCR_SUBMIT_MIN_INTERVAL_SECONDS = max(0.0, settings.OCR_SUBMIT_MIN_INTERVAL_SECONDS)
 OCR_STATUS_POLL_INTERVAL_SECONDS = max(1.0, settings.OCR_STATUS_POLL_INTERVAL_SECONDS)
+OCR_STATUS_MAX_WAIT_SECONDS = max(60, settings.OCR_STATUS_MAX_WAIT_SECONDS)
 
 _submit_lock = threading.Lock()
 _last_submit_at = 0.0
@@ -174,10 +175,14 @@ def run_ocr_task(pdf_file_path):
 
     while True:
         try:
-            status_check = requests.get(status_url, verify=False).json()
+            status_check = requests.get(status_url, verify=False, timeout=30).json()
             status = status_check.get("status")
 
             elapsed = int(time.time() - start_time)
+            if elapsed >= OCR_STATUS_MAX_WAIT_SECONDS:
+                logger.error(f"⏰ OCR状态轮询超时: task_id={task_id}, elapsed={elapsed}s")
+                return _build_error_response(504, f"OCR状态轮询超时，超过 {OCR_STATUS_MAX_WAIT_SECONDS} 秒", task_id=task_id)
+
             # 使用 \r 实现单行刷新显示进度
             logger.info(f"[已耗时 {elapsed}s] 当前状态: {status}")
 

@@ -23,11 +23,14 @@ from app_module.utils.paths_utils import build_storage_paths
 
 # 初始化日志记录器
 logger = setup_logger("ocr_task_service")
-# 并发数
+# OCR页级并发数（全局）
 MAX_WORKERS = max(1, settings.OCR_MAX_WORKERS)
-executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)  # 限制最大线程数
+OCR_AUX_WORKERS = max(4, settings.OCR_TASK_CONSUMERS * 2)
+ocr_executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+aux_executor = ThreadPoolExecutor(max_workers=OCR_AUX_WORKERS)
+_page_ocr_semaphore: asyncio.Semaphore | None = None
 
-logger.info(f"OCR线程池已初始化: max_workers={MAX_WORKERS}")
+logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={OCR_AUX_WORKERS}")
 
 # 创建规则引擎实例
 rule_engine = RuleEngine()
@@ -40,6 +43,54 @@ config_path = os.path.join('app_module', 'rule_engine', 'config', 'rules_config.
 config_loader.load_from_json(config_path)
 
 
+def get_global_page_ocr_semaphore() -> asyncio.Semaphore:
+    global _page_ocr_semaphore
+    if _page_ocr_semaphore is None:
+        _page_ocr_semaphore = asyncio.Semaphore(MAX_WORKERS)
+    return _page_ocr_semaphore
+
+
+def calculate_task_status_from_details(task_details: list[Any], current_status: int | None = None) -> int:
+    """根据任务详情推导主任务状态。0待执行、1执行中、2成功、3失败、4部分失败。"""
+    if not task_details:
+        return current_status if current_status in {0, 1, 2, 3, 4} else 3
+
+    detail_statuses = {int(detail.status) for detail in task_details if hasattr(detail, "status")}
+    if not detail_statuses:
+        return current_status if current_status in {0, 1, 2, 3, 4} else 3
+
+    if detail_statuses == {2}:
+        return 2
+
+    if detail_statuses <= {2, 3}:
+        if detail_statuses == {3}:
+            return 3
+        return 4
+
+    if 0 in detail_statuses or 1 in detail_statuses:
+        return 1
+
+    return current_status if current_status in {0, 1, 2, 3, 4} else 3
+
+
+async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
+    interval_seconds = max(5.0, settings.OCR_TASK_HEARTBEAT_SECONDS)
+    try:
+        while not stop_event.is_set():
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+                break
+            except asyncio.TimeoutError:
+                with SessionLocal() as db:
+                    task_mapper = OcrTaskMapper(db)
+                    alive = task_mapper.heartbeat_running_task(task_id)
+                    if not alive:
+                        logger.warning(f"任务续租失败或任务状态已变化: task_id={task_id}")
+                        break
+    except asyncio.CancelledError:
+        raise
+
+
 async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool = False) -> None:
     """
     异步处理OCR任务
@@ -47,6 +98,9 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
     - file_url: PDF文件URL
     - merge_mode: 是否启用合并模式
     """
+    heartbeat_stop_event = asyncio.Event()
+    heartbeat_task = asyncio.create_task(heartbeat_task_claim(task_id, heartbeat_stop_event))
+
     # 1. 更新任务状态为执行中
     with SessionLocal() as db:
         task_mapper = OcrTaskMapper(db)
@@ -91,15 +145,15 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
                 }
                 detail_records.append(detail_record)
 
-            if detail_records:
-                detail_mapper.batch_create_task_details(detail_records)
+            replaced_count = detail_mapper.replace_task_details(task_id, detail_records)
+            logger.info(f"任务详情记录已重建: task_id={task_id}, detail_count={replaced_count}")
 
         # 4. 分批进行OCR识别
         pages = pdf_split_result.get("pages", [])
         logger.info(f"开始OCR识别: task_id={task_id}, total_pages={len(pages)}")
 
         # 使用信号量控制并发数
-        semaphore = asyncio.Semaphore(MAX_WORKERS)
+        semaphore = get_global_page_ocr_semaphore()
 
         # 创建并发任务
         tasks = [process_single_page_ocr(task_id, page_info, semaphore, merge_mode) for page_info in pages]
@@ -142,17 +196,21 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
                         groups[group_id].append(detail)
                     
                     # 为每组发送回调
+                    loop = asyncio.get_running_loop()
                     for group_id, group_details in groups.items():
                         page_numbers = [detail.page_no for detail in group_details]
-                        send_callback_message(task_id, page_numbers)
+                        await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_numbers)
 
-        # 更新主任务状态为完成
+        # 根据页级执行结果聚合主任务状态
         with SessionLocal() as db:
             task_mapper = OcrTaskMapper(db)
-            update_data = {"status": 2}  # 执行成功
+            detail_mapper = OcrTaskDetailMapper(db)
+            task_details = detail_mapper.get_task_details_by_task_id(task_id)
+            final_status = calculate_task_status_from_details(task_details, current_status=1)
+            update_data = {"status": final_status}
             task_mapper.update_task(task_id, update_data)
 
-        logger.info(f"OCR任务处理完成: task_id={task_id}")
+        logger.info(f"OCR任务处理完成: task_id={task_id}, final_status={final_status}")
 
     except Exception as e:
         # 4. 更新任务失败状态（错误处理）
@@ -166,6 +224,13 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
 
         # 记录错误日志
         logger.error(f"OCR任务处理失败，任务ID: {task_id}, 错误: {str(e)}", exc_info=True)
+    finally:
+        heartbeat_stop_event.set()
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
 
 def send_callback_message(task_id, page_number):
@@ -187,7 +252,7 @@ def send_callback_message(task_id, page_number):
 
         logger.info(f"开始构建回调数据，任务ID: {task_id}")
         # 构建回调数据
-        callback_data = {
+        callback_data: dict[str, Any] = {
             "task_id": task_info.task_id,
             "status": task_info.status,
             "foreign_id": task_info.foreign_id,
@@ -200,20 +265,7 @@ def send_callback_message(task_id, page_number):
         task_details = detail_mapper.get_task_details_by_task_id(task_id)
         logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")
 
-        # 判断所有详情的status是否都为2（执行成功）
-        overall_status = task_info.status  # 默认使用原状态
-        if task_details:
-            all_completed = all(detail.status == 2 for detail in task_details)
-            all_processed = all(detail.status in [2, 3] for detail in task_details)  # 2成功，3失败
-
-            if all_completed:  # 如果所有详情都成功完成
-                overall_status = 2
-            elif all_processed and not all_completed:  # 如果都处理完了但不是全部成功
-                # 检查是否有失败的，如果有失败则整体为失败状态，否则为成功
-                has_failure = any(detail.status == 3 for detail in task_details)
-                overall_status = 3 if has_failure else 2
-            else:  # 还有未完成的任务
-                overall_status = 1  # 执行中
+        overall_status = calculate_task_status_from_details(task_details, task_info.status)
         callback_data.update({"status": overall_status})
 
         # 处理页码信息
@@ -222,9 +274,9 @@ def send_callback_message(task_id, page_number):
             first_page_no = page_number[0] if page_number else None
             if first_page_no is not None:
                 detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
-                logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
 
                 if detail_info:
+                    logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
                     items = {
                         "page_no": page_number,
                         "raw": detail_info.structured_data,
@@ -232,16 +284,14 @@ def send_callback_message(task_id, page_number):
                                                                                         'isoformat') else str(
                             detail_info.create_datetime)}
 
-                    callback_data.update({
-                        "items": items
-                    })
+                    callback_data["items"] = items
         else:
             # 非合并模式：page_no为单个值
             if page_number is not None:
                 detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
-                logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
 
                 if detail_info:
+                    logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
                     items = {
                         "page_no": detail_info.page_no,
                         "raw": detail_info.structured_data,
@@ -249,9 +299,7 @@ def send_callback_message(task_id, page_number):
                                                                                         'isoformat') else str(
                             detail_info.create_datetime)}
 
-                    callback_data.update({
-                        "items": items
-                    })
+                    callback_data["items"] = items
         callback_url = task_info.callback_url
         logger.info(f"回调URL: {callback_url}")  # 新增日志
         # # 打印回调参数
@@ -315,7 +363,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
 
             loop = asyncio.get_event_loop()
             ocr_response = await loop.run_in_executor(
-                executor,  # 使用全局线程池，避免变量名冲突
+                ocr_executor,
                 run_ocr_task,
                 image_path
             )
@@ -327,7 +375,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 logger.error(f"OCR任务执行失败: task_id={task_id}, page={page_number}, error={error_msg}")
                 # 发送飞书通知
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(executor, feishu_client.send_error_log_message, ErrorLog(
+                await loop.run_in_executor(aux_executor, feishu_client.send_error_log_message, ErrorLog(
                     id=task_id,
                     result_msg=error_msg
                 ))
@@ -336,7 +384,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             ocr_text = ocr_response.get("ocr_text", "")
             ocr_task_id = ocr_response.get("task_id", "")
             # 从OCR文本提取结构化数据
-            structured_response = extract_structured_data_from_ocr(ocr_text)
+            structured_response = await loop.run_in_executor(aux_executor, extract_structured_data_from_ocr, ocr_text)
 
             document_type = structured_response.get("document_type", "")
             structured_data = structured_response.get("structured_data", None)
@@ -385,7 +433,8 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             # 只有非合并模式才发送单页回调
             if not merge_mode:
                 logger.info(f"發送回調信息: task_id={task_id}, page={page_info['page_number']}")
-                send_callback_message(task_id, page_info['page_number'])
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_info['page_number'])
 
 
 def extract_receipts_form_data(ocr_text):
@@ -393,13 +442,13 @@ def extract_receipts_form_data(ocr_text):
     document_type = "receipts"
 
     # 初始化结构化数据
-    regex_structured_data = {
+    regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
         "product_service": []
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
 
     # 更新结构化数据
     for field, value in extracted_fields.items():
@@ -431,7 +480,7 @@ def extract_invoice_form_data(ocr_text):
     document_type = "invoice"
 
     # 初始化结构化数据
-    regex_structured_data = {
+    regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
         "supplier_id": "",
         "supplier_name": "",
@@ -440,7 +489,7 @@ def extract_invoice_form_data(ocr_text):
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取订单联系人信息
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
@@ -480,14 +529,14 @@ def extract_delivery_note_data(ocr_text):
     document_type = "delivery_note"
 
     # 初始化结构化数据
-    regex_structured_data = {
+    regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
         "product_service": [],
         "order_contact": []
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取订单联系人信息
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
@@ -497,8 +546,11 @@ def extract_delivery_note_data(ocr_text):
     for field, value in extracted_fields.items():
         if field == 'supplier' and isinstance(value, dict):
             # 将供应商信息展平到顶层
-            regex_structured_data['supplier_id'] = value.get('supplier_id', '')
-            regex_structured_data['supplier_name'] = value.get('supplier_name', '')
+            supplier_info: dict[str, Any] = value
+            supplier_id = str(supplier_info.get('supplier_id') or '')
+            supplier_name = str(supplier_info.get('supplier_name') or '')
+            regex_structured_data['supplier_id'] = supplier_id
+            regex_structured_data['supplier_name'] = supplier_name
         elif field == 'product_service' and isinstance(value, list):
             # 处理产品服务列表格式
             regex_structured_data[field] = value
@@ -529,14 +581,14 @@ def extract_misc_materials_data(ocr_text):
     document_type = "misc_materials_app"
 
     # 初始化结构化数据
-    regex_structured_data = {
+    regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
         "product_service": [],
         "order_contact": []
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
 
     # 提取字典数组
     contact_dict_list = extract_order_contact_to_dict_list(ocr_text)
@@ -576,13 +628,13 @@ def extract_transaction_record_data(ocr_text):
     document_type = "transaction"
 
     # 初始化结构化数据
-    regex_structured_data = {
+    regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
         "transactions": []
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
 
     # 将提取的字段映射到结构化数据
     for field, value in extracted_fields.items():

@@ -26,12 +26,27 @@ class Settings(BaseSettings):
     # OCR API配置
     ocr_api_key: str  # 添加缺失的配置项
     OLMOCR_API_BASE: str = "https://olmocr.c-smart.hk"
-    OCR_MAX_WORKERS: int = 6
+    OCR_MAX_WORKERS: int = 9
+    # 文档级任务消费者数量
+    OCR_TASK_CONSUMERS: int = 3
+    # 进程内任务通知队列最大容量
+    OCR_TASK_QUEUE_MAXSIZE: int = 100
+    # 暂未启用：原数据库待处理任务最大积压量（当前仅使用进程内队列）
+    OCR_MAX_PENDING_TASKS: int = 500
+    # 暂未启用：原 worker 补查/补拉数据库任务的轮询间隔
+    OCR_QUEUE_REFILL_INTERVAL_SECONDS: float = 5.0
+    # 暂未启用：原运行中数据库任务的续租心跳间隔
+    OCR_TASK_HEARTBEAT_SECONDS: float = 30.0
+    # 暂未启用：原判定 running 数据库任务为僵尸任务的超时时间
+    OCR_STALE_RUNNING_MINUTES: int = 30
+    # 暂未启用：原数据库抢占任务时扫描的候选任务数
+    OCR_TASK_CLAIM_CANDIDATE_LIMIT: int = 20
     OCR_SUBMIT_MAX_RETRIES: int = 5
     OCR_SUBMIT_BACKOFF_SECONDS: float = 2.0
     OCR_SUBMIT_MAX_BACKOFF_SECONDS: float = 30.0
     OCR_SUBMIT_MIN_INTERVAL_SECONDS: float = 1.0
     OCR_STATUS_POLL_INTERVAL_SECONDS: float = 3.0
+    OCR_STATUS_MAX_WAIT_SECONDS: int = 600
 
     # 数据库配置
     DB_USER: str
