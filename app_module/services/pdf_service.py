@@ -226,9 +226,35 @@ def split_ocr_text_by_page(ocr_text: str, expected_pages: int) -> List[str]:
     return parts[:expected_pages]
 
 
+def detect_ocr_jsonl_page_mapping_mode(ocr_pages: List[dict], start_page: int, expected_pages: int) -> tuple[str, List[int]]:
+    """检测 JSONL 页码是批次局部页码还是整份文档全局页码。"""
+    page_indexes = sorted(
+        entry.get("page")
+        for entry in ocr_pages
+        if isinstance(entry.get("page"), int) and entry.get("page") >= 0
+    )
+
+    expected_local_indexes = set(range(expected_pages))
+    expected_global_indexes = set(range(start_page - 1, start_page - 1 + expected_pages))
+
+    use_local_page_index = False
+    if page_indexes:
+        if all(idx in expected_local_indexes for idx in page_indexes):
+            use_local_page_index = True
+        elif not any(idx in expected_global_indexes for idx in page_indexes):
+            use_local_page_index = True
+
+    mapping_mode = "local_batch_page_index" if use_local_page_index else "global_document_page_index"
+    return mapping_mode, page_indexes
+
+
 def extract_ocr_page_results_from_jsonl(ocr_pages: List[dict], start_page: int, expected_pages: int) -> List[Dict[str, Any]]:
     """
     从 JSONL 逐页结果中提取指定批次范围的页级 OCR 结果。
+
+    兼容两种 page 编号模式：
+    1. 批次内局部页码：0..N-1（拆分后的子PDF常见）
+    2. 整份文件全局页码：(start_page-1)..（部分OCR服务可能返回）
 
     Returns:
         [
@@ -264,14 +290,21 @@ def extract_ocr_page_results_from_jsonl(ocr_pages: List[dict], start_page: int, 
             "error": error,
         }
 
+    mapping_mode, page_indexes = detect_ocr_jsonl_page_mapping_mode(ocr_pages, start_page, expected_pages)
+    use_local_page_index = mapping_mode == "local_batch_page_index"
+    logger.info(
+        f"JSONL页码映射模式: mode={mapping_mode}, start_page={start_page}, expected_pages={expected_pages}, "
+        f"jsonl_pages={page_indexes}"
+    )
+
     result: List[Dict[str, Any]] = []
     for i in range(expected_pages):
-        page_0based = (start_page - 1) + i
-        result.append(page_map.get(page_0based, {
-            "page": page_0based,
+        lookup_page_idx = i if use_local_page_index else (start_page - 1) + i
+        result.append(page_map.get(lookup_page_idx, {
+            "page": lookup_page_idx,
             "status": "missing",
             "markdown": "",
-            "error": "JSONL页面结果缺失",
+            "error": f"JSONL页面结果缺失({mapping_mode})",
         }))
 
     return result

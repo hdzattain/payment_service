@@ -13,10 +13,9 @@ from app_module.mapper.ocr_task_mapper import OcrTaskMapper
 from app_module.olmocr_module.olmocr_service import run_ocr_task
 from app_module.rule_engine.extract_order_contact import extract_order_contact_to_dict_list
 from app_module.services.pdf_service import (
-    split_pdf,
+    detect_ocr_jsonl_page_mapping_mode,
     split_pdf_by_batch,
     split_ocr_text_by_page,
-    split_ocr_pages_from_jsonl,
     extract_ocr_page_results_from_jsonl,
 )
 from app_module.rule_engine.ocr_rule_engine import RuleEngine
@@ -395,15 +394,24 @@ async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.S
 
             # 优先使用 JSONL 逐页结果，保留页级 status / error；兜底使用 PAGE BREAK 分隔
             if ocr_pages:
+                mapping_mode, jsonl_pages = detect_ocr_jsonl_page_mapping_mode(ocr_pages, start_page, page_count)
                 page_results = extract_ocr_page_results_from_jsonl(ocr_pages, start_page, page_count)
-                logger.info(f"使用JSONL逐页结果拆分: task_id={task_id}, batch={batch_index}, pages={len(page_results)}")
+                logger.info(
+                    f"使用JSONL逐页结果拆分: task_id={task_id}, batch={batch_index}, "
+                    f"start_page={start_page}, page_count={page_count}, jsonl_pages={jsonl_pages}, "
+                    f"mapping_mode={mapping_mode}, pages={len(page_results)}"
+                )
             else:
                 page_texts = split_ocr_text_by_page(full_ocr_text, page_count)
                 page_results = [
                     {"markdown": page_text, "status": "success", "error": ""}
                     for page_text in page_texts
                 ]
-                logger.info(f"JSONL不可用，使用PAGE BREAK兜底拆分: task_id={task_id}, batch={batch_index}, pages={len(page_results)}")
+                logger.info(
+                    f"JSONL不可用，使用PAGE BREAK兜底拆分: task_id={task_id}, batch={batch_index}, "
+                    f"start_page={start_page}, page_count={page_count}, jsonl_pages=[], mapping_mode=page_break_fallback, "
+                    f"pages={len(page_results)}"
+                )
 
             # 逐页进行 AI 结构化提取
             extract_tasks = []

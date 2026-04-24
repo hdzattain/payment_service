@@ -12,6 +12,7 @@ from app_module.database.ocr_database import SessionLocal
 from app_module.utils.llm_utils import call_deepseek_api
 
 logger = setup_logger("merge_service")
+AI_MERGE_MAX_CONCURRENCY = 4
 
 # 各文档类型的合并输出JSON结构定义（精简版，仅字段名和类型）
 MERGE_JSON_STRUCTURES = {
@@ -264,6 +265,59 @@ async def ai_merge_pages(group_pages: list, document_type: str) -> Optional[Dict
         return None
 
 
+async def _process_single_ai_merge_group(task_id: str, group_key: str, group_pages: list,
+                                         callback_fn=None, semaphore: asyncio.Semaphore | None = None) -> Dict[int, Dict[str, Any]]:
+    """处理单个需要 AI 合并的文档组，支持并发控制。"""
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(AI_MERGE_MAX_CONCURRENCY)
+
+    async with semaphore:
+        document_type = group_pages[0]['structured_data'].get('document_type', '')
+        logger.info(
+            f"检测到需要合并的文档组: {group_key}，页面数: {len(group_pages)}，"
+            f"尝试AI合并，并发上限: {AI_MERGE_MAX_CONCURRENCY}"
+        )
+
+        merged_data = await ai_merge_pages(group_pages, document_type)
+
+        if merged_data is None:
+            # AI合并失败，使用原有逻辑兜底
+            logger.warning(f"AI合并失败，使用原有合并逻辑兜底: {group_key}")
+            if document_type == "delivery_note":
+                merged_data = await merge_delivery_note(group_pages)
+            elif document_type == "invoice":
+                merged_data = await merge_invoice(group_pages)
+            elif document_type == "misc_materials_app":
+                merged_data = await merge_misc_materials_app(group_pages)
+            else:
+                merged_data = group_pages[0]['structured_data']
+
+        db_write_succeeded = False
+        try:
+            # 将合并后的结果写回数据库
+            with SessionLocal() as db:
+                detail_mapper = OcrTaskDetailMapper(db)
+                merged_json = json.dumps(merged_data, ensure_ascii=False)
+                for page_data in group_pages:
+                    update_data = {'structured_data': merged_json}
+                    detail_mapper.update_task_detail(task_id, page_data['page_no'], update_data)
+                logger.info(f"合并结果已写回数据库: {group_key}，影响页面: {[p['page_no'] for p in group_pages]}")
+            db_write_succeeded = True
+        except Exception as db_err:
+            logger.error(f"合并结果写回数据库失败: group={group_key}, error={db_err}", exc_info=True)
+
+        page_numbers = [p['page_no'] for p in group_pages]
+
+        # 合并完一组立即回调（仅在数据库写回成功后）
+        if callback_fn and db_write_succeeded:
+            try:
+                await callback_fn(task_id, page_numbers)
+            except Exception as cb_err:
+                logger.error(f"合并组回调异常: group={group_key}, error={cb_err}")
+
+        return {page_data['page_no']: merged_data for page_data in group_pages}
+
+
 async def merge_pages_data(task_id: str, callback_fn=None) -> Dict[int, Dict[str, Any]]:
     """
     合并同一任务中相同 document_no + document_type 的页面数据。
@@ -341,42 +395,27 @@ async def merge_pages_data(task_id: str, callback_fn=None) -> Dict[int, Dict[str
             except Exception as cb_err:
                 logger.error(f"不合并组回调异常: group={group_key}, error={cb_err}")
 
-    # ---- 第二轮：需要 AI 合并的组，逐组处理，合并完一组回调一组 ----
-    for group_key, group_pages in pending_ai_groups.items():
-        document_type = group_pages[0]['structured_data'].get('document_type', '')
-        logger.info(f"检测到需要合并的文档组: {group_key}，页面数: {len(group_pages)}，尝试AI合并")
+    # ---- 第二轮：需要 AI 合并的组，最多 4 个并发，谁先完成谁先写库/回调 ----
+    if pending_ai_groups:
+        ai_merge_semaphore = asyncio.Semaphore(AI_MERGE_MAX_CONCURRENCY)
+        group_tasks = [
+            _process_single_ai_merge_group(
+                task_id,
+                group_key,
+                group_pages,
+                callback_fn=callback_fn,
+                semaphore=ai_merge_semaphore,
+            )
+            for group_key, group_pages in pending_ai_groups.items()
+        ]
+        group_results = await asyncio.gather(*group_tasks, return_exceptions=True)
 
-        merged_data = await ai_merge_pages(group_pages, document_type)
-
-        if merged_data is None:
-            # AI合并失败，使用原有逻辑兜底
-            logger.warning(f"AI合并失败，使用原有合并逻辑兜底: {group_key}")
-            if document_type == "delivery_note":
-                merged_data = await merge_delivery_note(group_pages)
-            elif document_type == "invoice":
-                merged_data = await merge_invoice(group_pages)
-            elif document_type == "misc_materials_app":
-                merged_data = await merge_misc_materials_app(group_pages)
-
-        # 将合并后的结果写回数据库
-        with SessionLocal() as db:
-            detail_mapper = OcrTaskDetailMapper(db)
-            merged_json = json.dumps(merged_data, ensure_ascii=False)
-            for page_data in group_pages:
-                update_data = {'structured_data': merged_json}
-                detail_mapper.update_task_detail(task_id, page_data['page_no'], update_data)
-            logger.info(f"合并结果已写回数据库: {group_key}，影响页面: {[p['page_no'] for p in group_pages]}")
-
-        page_numbers = [p['page_no'] for p in group_pages]
-        for page_data in group_pages:
-            merged_results[page_data['page_no']] = merged_data
-
-        # 合并完一组立即回调
-        if callback_fn:
-            try:
-                await callback_fn(task_id, page_numbers)
-            except Exception as cb_err:
-                logger.error(f"合并组回调异常: group={group_key}, error={cb_err}")
+        for idx, group_result in enumerate(group_results):
+            if isinstance(group_result, Exception):
+                failed_group_key = list(pending_ai_groups.keys())[idx]
+                logger.error(f"并行AI合并组执行异常: group={failed_group_key}, error={group_result}", exc_info=True)
+                continue
+            merged_results.update(group_result)
 
     return merged_results
 
