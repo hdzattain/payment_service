@@ -513,13 +513,14 @@ RECEIPTS_PROMPT = """
   "document_type": "字符串（文件类型，固定为\"receipts\"）",
   "site_name": "字符串（地盘名称，如：將軍澳海水化淡廠第一階段(CDX)）",
   "material_category": "字符串（材料分类，如：安全環保用品(U01)）",
-  "creation_date": "字符串（制单日期，如：2024-01-02）",
-  "vendor_name": "字符串（客商名称，如：國際安全用品有限公司(ISEL)）",
-  "payment_order_no": "字符串（付辦單號，如：CDX/2401/A/0001）",
+  "date": "字符串（制单日期，如：2024-01-02）",
+  "supplier_name": "字符串（供应商名称、客商名称，如：國際安全用品有限公司(ISEL)，无则填""）",
+  "document_no": "字符串（付辦單號，如：CDX/2401/A/0001）",
   "contract_no": "字符串（合约编号，如：DPC/GEN/23033/00）",
   "invoice_date": "字符串（发票日期，如：2023-12-29）",
   "payment_method": "字符串（付款方式，如：支票）",
-  "current_occurrence": "字符串（本期發生，如：12200.00）",
+  "total_amount": "字符串（本期發生，如：12200.00）",
+  "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "product_service": [
     {{
       "product_service_name": "字符串（材料名称，如：馬路欄河）",
@@ -528,8 +529,7 @@ RECEIPTS_PROMPT = """
       "product_service_unit": "字符串（计量单位，如：個）",
       "product_service_quantity": 數字格式（产品数量，數字格式，如100、10.12）,
       "product_service_unit_price": "字符串（单价，如：122.000）",
-      "product_service_amount": "字符串（金额，如：12200.00）",
-      "product_service_contract_no": "字符串（合约编号，与顶层contract_no一致）"
+      "product_service_amount": "字符串（金额，如：12200.00）"
     }}
   ],
   "invoice_no": "字符串（发票号码，如：SNT2312-0110）",
