@@ -23,38 +23,50 @@ INVOICE_PROMPT = """
 ## 示例案例（帮助理解任务）
 ### 案例 1：
 #### 输入：
-# 永新五金工程有限公司
-WING SUN METAL & ENGINEERING CO., LTD
-九龍旺角豉油街10號B地下
-10B, SOY STREET, G/F., SUN MAN LEE BLDG., MONGKOK, KOWLOON.
-TEL: (852) 2396 7088(5線)　FAX: (852) 2396 7512
-工程部: 廣東省東莞厚街鎮下汴工業管理區　電話: 8559 1345
-E-mail: wsmetal8@netvigator.com
+MESSRS.: 中國建築工程(香港)有限公司(海水化淡廠)
 
-**MESSRS.** 中國建築工程(香港)有限公司(海水化淡廠)
+發 INVOICE 票
 
-| 項目 | 內容 |
-|---|---|
-| 客戶代號 | 中國CDX |
-| 參考編號 | DPC/GEN/23003 |
-| INVOICE NO. | 23/005012 |
-| PAGE | 3 / 3 |
-| Date | 2023/12/04 |
+<table>
+  <tr>
+    <th>貨名<br>DESCRIPTION</th>
+    <th>數量<br>QUANTITY</th>
+    <th>單價<br>UNIT PRICE</th>
+    <th>金額<br>AMOUNT</th>
+  </tr>
+  <tr>
+    <td>025 菊花牌膠手套(中碼) 黃色</td>
+    <td>4 對</td>
+    <td>26.0000</td>
+    <td>104.00</td>
+  </tr>
+  <tr>
+    <td>026 36" X 48" 黑色垃圾袋100個/包 厚身</td>
+    <td>3 包</td>
+    <td>250.0000</td>
+    <td>750.00</td>
+  </tr>
+  <tr>
+    <td>027 水鞋(38碼)</td>
+    <td>1 對</td>
+    <td>68.0000</td>
+    <td>68.00</td>
+  </tr>
+  <tr>
+    <td>028 透明即棄膠手套(100只/盒)(白色M碼)</td>
+    <td>11 盒</td>
+    <td>100.0000</td>
+    <td>1,100.00</td>
+  </tr>
+  <tr>
+    <td>029 大垃圾桶連蓋16" X 17" X 24" (45L) 腳踏灰色</td>
+    <td>4 個</td>
+    <td>180.0000</td>
+    <td>720.00</td>
+  </tr>
+</table>
 
-## 發 INVOICE 票
-
-| 貨名 / DESCRIPTION | 數量 / QUANTITY | 單價 / UNIT PRICE | 金額 / AMOUNT |
-|---|---:|---:|---:|
-| 025 菊花牌膠手套(中碼) 黃色 | 4對 | 26.0000 | 104.00 |
-| 026 36" X 48" 黑色垃圾袋100個/包 厚身 | 3包 | 250.0000 | 750.00 |
-| 027 水鞋(38碼) | 1對 | 68.0000 | 68.00 |
-| 028 透明即棄膠手套(100只/盒)(白色M碼) | 11盒 | 100.0000 | 1,100.00 |
-| 029 大垃圾桶連蓋16" X 17" X 24" (45L) 脚踏灰色 | 4個 | 180.0000 | 720.00 |
-
-**CDX-3383**
-將軍澳海水化淡廠 137 堆填區, 翠谷　卓生 9138 2007 / 林生 9215 3007 / 謝生 5962 9254
-
-**TOTAL** HKD 18,891.00
+TOTAL HKD 18,891.00
 
 #### 输出：
 {{
@@ -98,110 +110,135 @@ E-mail: wsmetal8@netvigator.com
     "order_contact": [],
     "currency": "HKD",
     "total_amount": "18891.00",
-    "document_no": "23/005012",
-    "invoice_date": "2023-12-04",
+    "document_no": "",
+    "invoice_date": "",
     "supplier_id": "",
-    "supplier_name": "永新五金工程有限公司",
+    "supplier_name": "",
     "site_name": "中國建築工程(香港)有限公司(海水化淡廠)"
 }}
 
 ### 案例 2：
 #### 输入：
-# 海興材料有限公司 Hoi Hing Building Materials Co. Limited
+Hoi Hing Building Materials Co. Limited
+ROOM 306, 3/F., JOIN IN HANG SING CENTRE, 71-75 CONTAINER PORT ROAD, KWAI CHUNG, N.T., HONG KONG
+TEL: 2388 0263, 2536 2900   FAX: 2770 4137
+門市部：九龍旺角甘霖街22號地下
+G/F., 22 KAM LAM STREET, MONGKOK, KOWLOON, H.K.
+TEL: 2398 8902
 
-Hoi Hing Building Materials
+TO: 中國建築工程(香港)有限公司(1511052-05)
+CDX 將軍澳海水化淡廠第一期(施工)
 
-新界葵涌貨櫃碼頭路71-75號鐘意恆勝中心3樓306室  
-Rm 306, 3F, Join-In Hang Sing Centre,  
-71-75 Container Port Road, Kwai Chung, NT, HK  
-Tel: 2536 2900 | 2388 0263  Fax: 2770 4137
+ATTN: 卓先生
+TEL NO.: 9138 2007
+FAX NO.: 
 
-ISO 9001 : 2015  
-Certificate No.: CC 1993
+發票
+INVOICE
 
-# 發票 INVOICE
+發票編號
+INVOICE NO.: H2239266
+日期
+DATE: 30/11/2022
+客戶訂單編號
+P.O. NO.: 
+營業員
+SALES: SAMMI
+客戶編號
+CUSTOMER CODE: 1511052-05
+頁數
+PAGE NO.: 1
 
-## To
+<table>
+  <tr>
+    <th>ITEM</th>
+    <th>摘要<br>Description</th>
+    <th>送貨單編號<br>D.N. NO.</th>
+    <th>數量<br>Quantity</th>
+    <th>單價<br>Unit Price</th>
+    <th>金額<br>Amount</th>
+  </tr>
+  <tr>
+    <td>PG0801</td>
+    <td>DPC/GEN/22068/00<br>~ 3/4" 黃風喉 PG0801</td>
+    <td>D22-72035</td>
+    <td>3 卷</td>
+    <td>580.00</td>
+    <td>1,740.00</td>
+  </tr>
+  <tr>
+    <td>PG0803</td>
+    <td>~ 1" 黃風喉PG0803<br>編號(CDX2324)</td>
+    <td></td>
+    <td>3 卷</td>
+    <td>840.00</td>
+    <td>2,520.00</td>
+  </tr>
+  <tr>
+    <td>PG0401</td>
+    <td>^220V 1" 1/8HP 鶴見牌 水泵<br>Model: Family12(PG0401)<br>編號: CDX2347</td>
+    <td>D22-74883</td>
+    <td>2 台</td>
+    <td>680.00</td>
+    <td>1,360.00</td>
+  </tr>
+  <tr>
+    <td>PG0803</td>
+    <td>^ 1" 黃風喉 PG0803<br>編號: CDX2378</td>
+    <td>D22-77756</td>
+    <td>3 卷</td>
+    <td>840.00</td>
+    <td>2,520.00</td>
+  </tr>
+</table>
 
-- TO：中國建築工程(香港)有限公司
-- 項目：CDX 將軍澳海水化淡廠第一期 - 安全鞋
-- ATTN：卓先生
-- TEL NO.：9138 2007
-- SITE CODE：
+收發票日期
+28 DEC 2022
+By: ____________
 
-## 發票資料
-
-- QTN NO.：
-- SO No.：
-- Cust PR.：CDX3776
-- Cust PO.：
-- Contract No.：DPC/GEN/24023/00
-- 發票編號 Inv No.：HH24-023292
-- 日期 Date：31-08-2024
-- 銷售員 Sales：Alin Xu
-- 客戶編碼 Cust No.：800008-00041-06
-- 頁數 Pages：1/1
-
-## 明細
-
-| No. | Item Code | 產品明細 Description | D.N. No. | Quantity | Unit Price | Amount |
-|---:|---|---|---|---:|---:|---:|
-| 1 | MD0226 | ^ 石星KC-9920 安全鞋 #39<br>-馮靜雯 | HD24-045113 | 1對 | 350.00 | 350.00 |
-| 2 | MD0226 | ^ 石星KC-9920 安全鞋 #41<br>-工程辛嘉彤 |  | 1對 | 350.00 | 350.00 |
-| 3 | MD0226 | ^ 石星KC-9920 安全鞋 #44<br>-梁倚惠<br>CDX3776 |  | 1對 | 350.00 | 350.00 |
-
-**TOTAL  HK$1,050.00**
-
-## 收件章 / 簽收
-
-- 收發票日期：10 SEP 2024
-- By: __________
-
-（頁面下方有藍色收章，內容部分模糊）
-
-## 頁腳
-
-- Confirmation and received by
-- For and on Behalf of
-- Authorised Signature & Co. Chop
-- QR#11-2
-- E.&O.E
-- Authorised Signature
+Total: HK$ 8,140.00
 
 #### 输出：
 {{
     "document_type": "invoice",
     "product_service": [
         {{
-            "product_service_name": "^ 石星KC-9920 安全鞋 #39 -馮靜雯",
-            "product_service_quantity": "1",
-            "product_service_unit": "對",
-            "product_service_unit_price": "350.00",
-            "product_service_amount": "350.00"
+            "product_service_name": "DPC/GEN/22068/00 ~ 3/4\" 黃風喉 PG0801",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "580.00",
+            "product_service_amount": "1740.00"
         }},
         {{
-            "product_service_name": "^ 石星KC-9920 安全鞋 #41 -工程辛嘉彤",
-            "product_service_quantity": "1",
-            "product_service_unit": "對",
-            "product_service_unit_price": "350.00",
-            "product_service_amount": "350.00"
+            "product_service_name": "~ 1\" 黃風喉PG0803編號(CDX2324)",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "840.00",
+            "product_service_amount": "2520.00"
         }},
         {{
-            "product_service_name": "^ 石星KC-9920 安全鞋 #44 -梁倚惠 CDX3776",
-            "product_service_quantity": "1",
-            "product_service_unit": "對",
-            "product_service_unit_price": "350.00",
-            "product_service_amount": "350.00"
+            "product_service_name": "^220V 1\" 1/8HP 鶴見牌 水泵Model: Family12(PG0401)編號: CDX2347",
+            "product_service_quantity": "2",
+            "product_service_unit": "台",
+            "product_service_unit_price": "680.00",
+            "product_service_amount": "1360.00"
+        }},
+        {{
+            "product_service_name": "^ 1\" 黃風喉 PG0803編號: CDX2378",
+            "product_service_quantity": "3",
+            "product_service_unit": "卷",
+            "product_service_unit_price": "840.00",
+            "product_service_amount": "2520.00"
         }}
     ],
     "order_contact": [],
-    "document_no": "HH24-023292",
-    "invoice_date": "2024-08-31",
-    "site_name": "中國建築工程(香港)有限公司 CDX 將軍澳海水化淡廠第一期 - 安全鞋",
+    "document_no": "H2239266",
+    "invoice_date": "2022-12-28",
+    "site_name": "中國建築工程(香港)有限公司(1511052-05) CDX 將軍澳海水化淡廠第一期(施工)",
     "currency": "HKD",                               
-    "total_amount": "1050.00",
+    "total_amount": "8140.00",
     "supplier_id": "",
-    "supplier_name": "海興材料有限公司 Hoi Hing Building Materials Co. Limited"
+    "supplier_name": "Hoi Hing Building Materials Co. Limited"
 }}
 
 ## OCR识别文本：
@@ -260,79 +297,152 @@ RECEIPTS_PROMPT = """
 ## 示例案例（帮助理解任务）
 ### 案例 1：
 #### 输入：
-# 中國建築工程(香港)有限公司
+中國建築工程(香港)有限公司
+物資付款辦理單
 
-## 物資付款辦理單
+地盤名稱： 將軍澳海水化淡廠第一階段(CDX)        材料分類： 小五金材料(M20)        制單日期： 2023年12月6日
+客商名稱： 永新五金工程有限公司(WGS)        扣保固金比例： 0.00%        付辦單號： CDX/2312/A/0015
+合約編號： DPC/GEN/23003/00        發票日期： 2023年12月4日        收發票日期： 2023年12月6日
+幣種： 港元        是否代購： 否        付款方式： 支票        附單數： 4
 
-| 欄位 | 內容 |
-|---|---|
-| 地盤名稱 | 將軍澳海水化淡廠第一階段(CDX) |
-| 材料分類 | 小五金材料(M20) |
-| 制單日期 | 2023年12月6日 |
-| 客商名稱 | 永新五金工程有限公司(WGS) |
-| 扣保固金比例 | 0.00% |
-| 付辦單號 | CDX/2312/A/0015 |
-| 合約編號 | DPC/GEN/23003/00 |
-| 發票日期 | 2023年12月4日 |
-| 收發票日期 | 2023年12月6日 |
-| 幣種 | 港元 |
-| 是否代購 | 否 |
-| 付款方式 | 支票 |
-| 附單數 | 4 |
+<table>
+  <tr>
+    <th>項目</th>
+    <th>合約總額</th>
+    <th>上期累計</th>
+    <th>本期發生</th>
+    <th>本期累計</th>
+    <th>超合約額比例</th>
+  </tr>
+  <tr>
+    <td>DPC/GEN/23003總計</td>
+    <td>0.00</td>
+    <td>393,601.38</td>
+    <td>19,216.00</td>
+    <td>412,817.38</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td rowspan="4">合約款</td>
+    <td>材料款</td>
+    <td>0.00</td>
+    <td>393,601.38</td>
+    <td>19,216.00</td>
+    <td>412,817.38</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>費用</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>預付款</td>
+    <td>-</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>保固金</td>
+    <td>-</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>0.00</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>DPC/GEN/23003/0合計</td>
+    <td>0.00</td>
+    <td>393,601.38</td>
+    <td>19,216.00</td>
+    <td>412,817.38</td>
+    <td>-</td>
+  </tr>
+</table>
 
-### 合約金額彙總
+<table>
+  <tr>
+    <th>材料名稱</th>
+    <th>規格型號</th>
+    <th>數量</th>
+    <th>單價</th>
+    <th>金額</th>
+  </tr>
+  <tr>
+    <td>鐵咀大介刀(PJ3123)</td>
+    <td></td>
+    <td>12.000把</td>
+    <td>6.000</td>
+    <td>72.00</td>
+  </tr>
+  <tr>
+    <td>普通電池(PL7004)</td>
+    <td>AA，勁量牌，4粒/排</td>
+    <td>10.000排</td>
+    <td>12.650</td>
+    <td>126.50</td>
+  </tr>
+  <tr>
+    <td>普通電池(PL7005)</td>
+    <td>AAA，勁量牌，4粒/排</td>
+    <td>10.000排</td>
+    <td>12.650</td>
+    <td>126.50</td>
+  </tr>
+  <tr>
+    <td>工具,小五金,零星電器(PR0100)</td>
+    <td>大垃圾桶連蓋16"X17"X24"(45L)腳踏灰色</td>
+    <td>4.000個</td>
+    <td>180.000</td>
+    <td>720.00</td>
+  </tr>
+  <tr>
+    <td>工具,小五金,零星電器(PR0100)</td>
+    <td>藥水膠布100片/盒</td>
+    <td>2.000盒</td>
+    <td>18.000</td>
+    <td>36.00</td>
+  </tr>
+</table>
 
-| 項目 | 合約總額 | 上期累計 | 本期發生 | 本期累計 | 超合約額比例 |
-|---|---:|---:|---:|---:|---:|
-| DPC/GEN/23003總計 | 0.00 | 393,601.38 | 19,216.00 | 412,817.38 |  |
-| 材料款 | 0.00 | 393,601.38 | 19,216.00 | 412,817.38 | - |
-| 費用 | 0.00 | 0.00 | 0.00 | 0.00 | - |
-| 預付款 | - | 0.00 | 0.00 | 0.00 | - |
-| 保固金 | - | 0.00 | 0.00 | 0.00 | - |
-| DPC/GEN/23003/0合計 | 0.00 | 393,601.38 | 19,216.00 | 412,817.38 | - |
+<table>
+  <tr>
+    <th>费用类型</th>
+    <th>描述</th>
+    <th>數量</th>
+    <th>單價</th>
+    <th>金額</th>
+  </tr>
+  <tr>
+    <td></td>
+    <td></td>
+    <td>0.000</td>
+    <td>0.000</td>
+    <td>0.00</td>
+  </tr>
+</table>
 
-### 摘要
+<table>
+  <tr>
+    <th>發票號碼</th>
+    <th>送貨單號</th>
+    <th>發票號碼</th>
+    <th>送貨單號</th>
+  </tr>
+  <tr>
+    <td>23/005008，23/005012</td>
+    <td></td>
+    <td>D23/005008，D23/005012</td>
+    <td></td>
+  </tr>
+</table>
 
-| 材料名稱 | 規格型號 | 數量 | 單價 | 金額 |
-|---|---|---:|---:|---:|
-| 鐵咀大介刀(PJ3123) |  | 12.000把 | 6.000 | 72.00 |
-| 普通電池(PL7004) | AA，勁量牌，4粒/排 | 10.000排 | 12.650 | 126.50 |
-| 普通電池(PL7005) | AAA，勁量牌，4粒/排 | 10.000排 | 12.650 | 126.50 |
-| 工具,小五金,零星電器(PR0100) | 大垃圾桶連蓋16\"X17\"X24\"(45L)腳踏灰色 | 4.000個 | 180.000 | 720.00 |
-| 工具,小五金,零星電器(PR0100) | 藥水膠布100片/盒 | 2.000盒 | 18.000 | 36.00 |
-
-### 費用類型
-
-| 費用類型 | 描述 | 數量 | 單價 | 金額 |
-|---|---|---:|---:|---:|
-|  |  | 0.000 | 0.000 | 0.00 |
-
-### 發票號碼 / 送貨單號
-
-| 項目 | 內容 |
-|---|---|
-| 發票號碼 | 23/005008, 23/005012 |
-| 送貨單號 | D23/005008, D23/005012 |
-
-### 備註
-
-| 項目 | 內容 |
-|---|---|
-| 備註 | 54010102 |
-
-### 簽核欄
-
-- 地盤製表/複核：______________
-- 財務部簽收：______________
-- 物資部簽收：______________
-- 地盤經理：______________
-- 總經理：______________
-- 董事長：______________
-- 物資部：______________
-- 分管領導：______________
-- 財務部：______________
-
-Print Date: 2023-12-06 13:55
+備註：54010102
 
 #### 输出：
 {{
@@ -460,47 +570,41 @@ DELIVERY_NOTE_PROMPT = """
 ## 示例案例（帮助理解任务）
 ### 案例 1：
 #### 输入：
-# 永新五金工程有限公司
-WING SUN METAL & ENGINEERING CO. LTD.
-九龍旺角豉油街10號B地下
-10B, SOY STREET, G/F., SUN MAN LEE BLDG., MONGKOK, KOWLOON.
-TEL: 2396 7088 (5線)　FAX: 2396 7512
-E-mail: wsmetal8@netvigator.com
+Delivery Note
 
-## Delivery Note
+ID：中國CDX / 4224
+Customer 中國建築工程(香港)有限公司(海水化淡廠)
+客戶：
+Attention 卓生 Phone : 9138 2007
+Reference DPC/GEN/23003 Fax : 3010 8232
 
-| ID | 中國CDX / 4224 |
-|---|---|
-| Customer | 中國建築工程(香港)有限公司(海水化淡廠) |
-| 客戶 |  |
-| Attention | 卓生 |
-| Phone | 9138 2007 |
-| Reference | DPC/GEN/23003 |
-| Fax | 3010 8232 |
+Delivery Note # D23/005012
+Date：04 December, 2023
+Page：1 of 2
+Salesperson CHOW
 
-| Delivery Note # | D23/005012 |
-|---|---|
-| Date | 04 December, 2023 |
-| Page | 1 of 2 |
-| Salesperson | CHOW |
+To：將軍澳海水化淡廠
+Ship To：將軍澳海水化淡廠 137 堆填區，翠谷
+卓生 9138 2007 / 林生 9215 3007 / 謝生 5962 9254
 
-| To | 將軍澳海水化淡廠 |
-|---|---|
-| Ship To | 將軍澳海水化淡廠 137 堆填區, 翠谷<br>卓生 9138 2007 / 林生 9215 3007 / 謝生 5962 9254 |
+Delivery 04 December, 2023
+Payment 月結
+Currency HKD
+Shipped FOB
 
-| Delivery | 04 December, 2023 |
-| Payment | 月結 |
-| Currency | HKD |
-| Shipped | FOB |
+<table>
+  <tr>
+    <th>#</th>
+    <th>Description</th>
+    <th>Quantity</th>
+  </tr>
+  <tr><td>001</td><td>維達三摺式抹手紙(16包/箱)</td><td>30 箱</td></tr>
+  <tr><td>002</td><td>維達廁紙 藍色</td><td>60 條</td></tr>
+  <tr><td>003</td><td>維達面紙(60盒/箱)</td><td>6 箱</td></tr>
+  <tr><td>004</td><td>汽車香座香片</td><td>6 個</td></tr>
+</table>
 
-| # | Description | Quantity |
-|---:|---|---:|
-| 001 | 維達三摺式抹手紙(16包/箱) | 30箱 |
-| 002 | 維達廁紙 藍色 | 60條 |
-| 003 | 維達面紙(60盒/箱) | 6箱 |
-| 004 | 汽車香座香片 | 6個 |
-
-**to be Continued**
+to be Continued
 
 #### 输出：
 {{
@@ -606,93 +710,88 @@ MISC_MATERIALS_APP_PROMPT = """
 ## 示例案例（帮助理解任务）
 ### 案例 1：
 #### 输入：
-# 中國建築工程(香港)有限公司
+地盤零星材料申請表
+地盤名稱: 將軍澳海水化淡廠第一階段(CD)日期: 26-Jul-24 編號: CDX3784
 
-# 地盤零星材料申請表
+<table>
+  <tr>
+    <th>序號</th>
+    <th>材料名稱 & 規格</th>
+    <th>單位</th>
+    <th>數量</th>
+    <th>進貨日期</th>
+    <th>材料用途及使用位置</th>
+    <th>合約編號</th>
+    <th>項目</th>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>M10 x 70mm 拉爆螺絲 (@70粒/盒) PD3502</td>
+    <td>盒</td>
+    <td>2</td>
+    <td></td>
+    <td>地盤備用</td>
+    <td>PD3502</td>
+    <td>24001</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>M12 x 75mm 拉爆螺絲 (@40粒/盒) PD3505</td>
+    <td>盒</td>
+    <td>2</td>
+    <td></td>
+    <td>地盤備用</td>
+    <td>PD3505</td>
+    <td>24001</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>玻璃膠槍 PJ6902</td>
+    <td>支</td>
+    <td>5</td>
+    <td></td>
+    <td>地盤備用</td>
+    <td>PJ6902</td>
+    <td>24001</td>
+  </tr>
+</table>
 
-**地盤名稱：** 將軍澳海水化淡廠第一階段(CDX)  
-**日期：** 2-Aug-24  
-**編號：** CDX3798
+地盤負責人: 孟 地盤內派/主管審核: 孫柏 製單人: 凡
+申請人: 布國強
 
-| 序號 | 材料名稱 & 規格 | 單位 | 數量 | 進貨日期 | 材料用途及使用位置 | 合約編號 | 項目 |
-|---|---|---|---:|---|---|---|---|
-| 1 | 石星KC-9920安全鞋 #39<br>MD0226 | 對 | 1 |  | RE order : RF265 | MD0226 | 24023 |
-| 2 | 石星KC-9920安全鞋 #41<br>MD0226 | 對 | 1 |  | RE order : RF265 | MD0226 | 24023 |
-| 3 | 石星KC-9920安全鞋 #42<br>MD0226 | 對 | 1 |  | RE order : RF265 | MD0226 | 24023 |
-| 4 | 石星KC-9920安全鞋 #43<br>MD0226 | 對 | 1 |  | RE order : RF265 | MD0226 | 24023 |
-| 5 | 石星Smaat SFC210 安全鞋（短）#42 MD0223 | 對 | 1 |  | RE order : RF265 | MD0223 | 24023 |
+備 註: 定點名冊材料申請表必須由物料控制員填寫“合約編號”及“項目”兩欄。
 
-## 簽署
-
-**地盤負責人：** （簽署）  
-**地盤內派主管審核：** （簽署，旁註似為「301」）  
-**製單人：** 凡  
-**申請人：** RE MAY SO
-
-右下有紫色圓形公司章，內容可辨識為：  
-CHINA STATE CONST. ENG. (H.K.) LTD.  
-中國建築工程(香港)有限公司  
-將軍澳海水化淡廠  
-第一階段  
-13/WSD/17
-
-## 備註
-
-備註: 定點名冊材料申請表必須由物料控制員填寫「合約編號」及「項目」兩欄。
-
-## 聯絡資料框
-
-**煩請訂貨**
-
-聯絡人: 卓生  
-電話: 9138 2007
-
-聯絡人: 林生  
-電話: 9215 3007
-
-傳真: 3010 8232
-
-地盤收貨人: 馮生  電話: 9249 9108
+<table>
+  <tr>
+    <th>煩請訂貨<br>聯絡人 : 卓生<br>電話 : 9138 2007<br>聯絡人: 林生<br>電話: 9215 3007<br>傳真 : 3010 8232<br>地盤收貨人: 馮生 電話:9249 9108</th>
+  </tr>
+</table>
 
 #### 输出：
 {{
     "document_type": "misc_materials_app",
     "product_service": [
         {{
-            "product_service_name": "石星KC-9920安全鞋",
-            "product_service_specification": "#39 MD0226",
-            "product_service_unit": "對",
-            "product_service_quantity": "1",
-            "product_service_contract_no": "MD0226"
+            "product_service_name": "M10 x 70mm 拉爆螺絲 (@70粒/盒) PD3502",
+            "product_service_specification": "M10 x 70mm",
+            "product_service_unit": "盒",
+            "product_service_quantity": "2",
+            "product_service_contract_no": "PD3502"
         }},
         {{
-            "product_service_name": "石星KC-9920安全鞋",
-            "product_service_specification": "#41 MD0226",
-            "product_service_unit": "對",
-            "product_service_quantity": "1",
-            "product_service_contract_no": "MD0226"
+            "product_service_name": "M12 x 75mm 拉爆螺絲 (@40粒/盒) PD3505",
+            "product_service_specification": "M12 x 75mm",
+            "product_service_unit": "盒",
+            "product_service_quantity": "2",
+            "product_service_contract_no": "PD3505"
         }},
         {{
-            "product_service_name": "石星KC-9920安全鞋",
-            "product_service_specification": "#42 MD0226",
-            "product_service_unit": "對",
-            "product_service_quantity": "1",
-            "product_service_contract_no": "MD0226"
-        }},
-        {{
-            "product_service_name": "石星KC-9920安全鞋",
-            "product_service_specification": "#43 MD0226",
-            "product_service_unit": "對",
-            "product_service_quantity": "1",
-            "product_service_contract_no": "MD0226"
-        }},
-        {{
-            "product_service_name": "石星Smaat SFC210 安全鞋（短）",
-            "product_service_specification": "#42 MD0223",
-            "product_service_unit": "對",
-            "product_service_quantity": "1",
-            "product_service_contract_no": "MD0223"
-        }},
+            "product_service_name": "玻璃膠槍 PJ6902",
+            "product_service_specification": "",
+            "product_service_unit": "支",
+            "product_service_quantity": "5",
+            "product_service_contract_no": "PJ6902"
+        }}
     ],
     "order_contact": [
         {{
@@ -708,11 +807,11 @@ CHINA STATE CONST. ENG. (H.K.) LTD.
             "order_contact_email": null
         }}
     ],
-    "document_no": "CDX3817",
-    "site_name": "將軍澳海水化淡廠第一階段(CDX)",
-    "date": "2024-08-20",
+    "document_no": "CDX3784",
+    "site_name": "將軍澳海水化淡廠第一階段(CD)",
+    "date": "2024-07-26",
     "order_creator": "凡",
-    "applicant": "RE MAY SO",
+    "applicant": "布國強",
     "site_receiver": {{
         "site_receiver_name": "馮生",
         "site_receiver_phone": "9249 9108"

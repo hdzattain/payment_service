@@ -9,7 +9,7 @@ from app_module.services.ocr_task_service import process_ocr_task_async
 logger = setup_logger("ocr_task_queue")
 
 TaskPayload = dict[str, object]
-TaskProcessor = Callable[[str, str, bool], Awaitable[None]]
+TaskProcessor = Callable[..., Awaitable[None]]
 
 
 class OCRTaskQueueManager:
@@ -146,6 +146,7 @@ class OCRTaskQueueManager:
                         task_id,
                         str(payload["file_url"]),
                         bool(payload.get("merge_mode", False)),
+                        payload.get("split_pages"),
                     )
                 except Exception as exc:
                     logger.error("OCR任务消费失败: worker=%s, task_id=%s, error=%s", worker_index, task_id, exc, exc_info=True)

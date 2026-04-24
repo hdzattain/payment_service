@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     OCR_STATUS_POLL_INTERVAL_SECONDS: float = 3.0
     OCR_STATUS_ERROR_FAIL_FAST_SECONDS: int = 12
     OCR_STATUS_MAX_WAIT_SECONDS: int = 600
+    # OCR 分页模式：0=整份文件不拆分，1=逐页拆分（默认），N=每N页一个批次
+    OCR_SPLIT_PAGES: int = 5
+    # AI 结构化提取并行线程数（批次OCR完成后，逐页调用LLM的最大并发数）
+    OCR_AI_EXTRACT_WORKERS: int = 10
 
     # 数据库配置
     DB_USER: str
@@ -56,8 +60,20 @@ class Settings(BaseSettings):
     DB_PORT: int
     DB_NAME: str
 
-    # Deepseek配置
-    CSCI_DEEPSEEK_API_KEY: str
+    # LLM / DeepSeek 配置
+    LLM_API_KEY: str | None = None
+    # LLM_BASE_URL: str = "https://ai-base-service.biz.3311csci.com/api/v1"
+    LLM_BASE_URL: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    LLM_CHAT_MODEL: str = "deepseek-v3.2"
+    LLM_MERGE_MODEL: str = "deepseek-v3.2"
+    LLM_EMBEDDING_MODEL: str = "deepseek-reasoner"
+    LLM_TIMEOUT_SECONDS: int = 60
+    # 兼容旧配置名，优先使用 LLM_API_KEY
+    CSCI_DEEPSEEK_API_KEY: str | None = None
+
+    @property
+    def resolved_llm_api_key(self) -> str | None:
+        return self.LLM_API_KEY or self.CSCI_DEEPSEEK_API_KEY
 
     # 配置.env文件路径
     model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8", extra="ignore")

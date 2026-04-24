@@ -12,7 +12,13 @@ from app_module.mapper.ocr_task_detail_mapper import OcrTaskDetailMapper
 from app_module.mapper.ocr_task_mapper import OcrTaskMapper
 from app_module.olmocr_module.olmocr_service import run_ocr_task
 from app_module.rule_engine.extract_order_contact import extract_order_contact_to_dict_list
-from app_module.services.pdf_service import split_pdf
+from app_module.services.pdf_service import (
+    split_pdf,
+    split_pdf_by_batch,
+    split_ocr_text_by_page,
+    split_ocr_pages_from_jsonl,
+    extract_ocr_page_results_from_jsonl,
+)
 from app_module.rule_engine.ocr_rule_engine import RuleEngine
 from app_module.rule_engine.rule_config_loader import RuleConfigurationLoader
 from app_module.utils.download_utils import download_file_from_url
@@ -26,11 +32,13 @@ logger = setup_logger("ocr_task_service")
 # OCR页级并发数（全局）
 MAX_WORKERS = max(1, settings.OCR_MAX_WORKERS)
 OCR_AUX_WORKERS = max(4, settings.OCR_TASK_CONSUMERS * 2)
+AI_EXTRACT_WORKERS = max(1, settings.OCR_AI_EXTRACT_WORKERS)
 ocr_executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
-aux_executor = ThreadPoolExecutor(max_workers=OCR_AUX_WORKERS)
+aux_executor = ThreadPoolExecutor(max_workers=max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS))
 _page_ocr_semaphore: asyncio.Semaphore | None = None
+_ai_extract_semaphore: asyncio.Semaphore | None = None
 
-logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={OCR_AUX_WORKERS}")
+logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS)}, ai_extract_workers={AI_EXTRACT_WORKERS}")
 
 # 创建规则引擎实例
 rule_engine = RuleEngine()
@@ -48,6 +56,13 @@ def get_global_page_ocr_semaphore() -> asyncio.Semaphore:
     if _page_ocr_semaphore is None:
         _page_ocr_semaphore = asyncio.Semaphore(MAX_WORKERS)
     return _page_ocr_semaphore
+
+
+def get_ai_extract_semaphore() -> asyncio.Semaphore:
+    global _ai_extract_semaphore
+    if _ai_extract_semaphore is None:
+        _ai_extract_semaphore = asyncio.Semaphore(AI_EXTRACT_WORKERS)
+    return _ai_extract_semaphore
 
 
 def calculate_task_status_from_details(task_details: list[Any], current_status: int | None = None) -> int:
@@ -91,13 +106,18 @@ async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
         raise
 
 
-async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool = False) -> None:
+async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool = False,
+                                 split_pages: int | None = None) -> None:
     """
     异步处理OCR任务
     - task_id: 任务ID
     - file_url: PDF文件URL
     - merge_mode: 是否启用合并模式
+    - split_pages: OCR分页模式，None=使用全局配置，0=整份文件，1=逐页，N=每N页一个批次
     """
+    # 确定实际 split_pages 值
+    effective_split_pages = split_pages if split_pages is not None else settings.OCR_SPLIT_PAGES
+
     heartbeat_stop_event = asyncio.Event()
     heartbeat_task = asyncio.create_task(heartbeat_task_claim(task_id, heartbeat_stop_event))
 
@@ -112,61 +132,66 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
         logger.info(f"开始构建存储路径: task_id={task_id}")
         source_path, split_path = build_storage_paths(task_id)
 
-        # 2. 下载文件和处理PDF
+        # 2. 下载文件
         logger.info(f"开始下载文件: task_id={task_id}, url={file_url}")
         download_file = await download_file_from_url(file_url, source_path)
 
-        logger.info(f"开始PDF分割: task_id={task_id}, split_path={split_path}")
-        pdf_split_result = await split_pdf(download_file, split_path)
-        logger.info(f"PDF分割完成: task_id={task_id}, total_pages={pdf_split_result.get('total_pages', 0)}")
+        # 3. 按批次拆分 PDF
+        logger.info(f"开始PDF批次拆分: task_id={task_id}, split_pages={effective_split_pages}")
+        batch_result = await split_pdf_by_batch(download_file, split_path, effective_split_pages)
+        total_pages = batch_result["total_pages"]
+        batches = batch_result["batches"]
+        logger.info(f"PDF拆分完成: task_id={task_id}, total_pages={total_pages}, batches={len(batches)}")
 
-        # 3. 更新任务完成状态并插入详情记录
+        # 4. 更新任务信息并插入详情记录（为每一页创建一条detail）
         with SessionLocal() as db:
             task_mapper = OcrTaskMapper(db)
             detail_mapper = OcrTaskDetailMapper(db)
 
             update_data = {
-                "file_page": pdf_split_result.get("total_pages", 0),
+                "file_page": total_pages,
                 "local_path": download_file,
                 "merge_mode": 1 if merge_mode else 0,
                 "status": 1  # 执行中
             }
             task_mapper.update_task(task_id, update_data)
 
-            # 批量插入详情记录
-            pages = pdf_split_result.get("pages", [])
             detail_records = []
-            for page_info in pages:
-                detail_record = {
+            for page_no in range(1, total_pages + 1):
+                detail_records.append({
                     "task_id": task_id,
-                    "page_no": page_info["page_number"],
-                    "file_url": page_info["file_path"],
+                    "page_no": page_no,
+                    "file_url": download_file,
                     "status": 0  # 待执行
-                }
-                detail_records.append(detail_record)
-
+                })
             replaced_count = detail_mapper.replace_task_details(task_id, detail_records)
             logger.info(f"任务详情记录已重建: task_id={task_id}, detail_count={replaced_count}")
 
-        # 4. 分批进行OCR识别
-        pages = pdf_split_result.get("pages", [])
-        logger.info(f"开始OCR识别: task_id={task_id}, total_pages={len(pages)}")
+        # 5. 对每个批次执行 OCR，然后拆分结果按页处理 AI 提取
+        logger.info(f"开始OCR识别: task_id={task_id}, total_pages={total_pages}, batches={len(batches)}, split_pages={effective_split_pages}")
 
-        # 使用信号量控制并发数
         semaphore = get_global_page_ocr_semaphore()
 
-        # 创建并发任务
-        tasks = [process_single_page_ocr(task_id, page_info, semaphore, merge_mode) for page_info in pages]
+        tasks = [
+            process_batch_ocr(task_id, batch_info, semaphore, merge_mode)
+            for batch_info in batches
+        ]
         await asyncio.gather(*tasks, return_exceptions=True)
 
         # 判断是否需要合并
         if merge_mode:
-            # 合并流程
+            # 合并流程：不合并的组立即回调，需要AI合并的组合并完一组回调一组
             logger.info(f"开始合并处理: task_id={task_id}")
             from app_module.services.merge_service import merge_pages_data
-            merged_data = await merge_pages_data(task_id)
-            
-            # 更新数据库
+
+            async def _merge_callback(tid: str, page_numbers: list):
+                """合并完成后的回调包装"""
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(aux_executor, send_callback_message, tid, page_numbers)
+
+            merged_data = await merge_pages_data(task_id, callback_fn=_merge_callback)
+
+            # 更新数据库（不合并的组在 merge_pages_data 内部已写回，这里统一确保一致）
             with SessionLocal() as db:
                 detail_mapper = OcrTaskDetailMapper(db)
                 for page_no, merged in merged_data.items():
@@ -174,32 +199,6 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
                         'structured_data': json.dumps(merged, ensure_ascii=False)
                     }
                     detail_mapper.update_task_detail(task_id, page_no, update_data)
-            
-            # 合并模式下，发送合并后的回调
-            with SessionLocal() as db:
-                task_mapper = OcrTaskMapper(db)
-                detail_mapper = OcrTaskDetailMapper(db)
-                
-                # 查询任务信息
-                task_info = task_mapper.get_task_by_id(task_id)
-                
-                if task_info:
-                    # 获取合并后的详情记录
-                    task_details = detail_mapper.get_task_details_by_task_id(task_id)
-                    
-                    # 按group_id分组，每组发送一次回调
-                    groups = {}
-                    for detail in task_details:
-                        group_id = detail.group_id or detail.page_no
-                        if group_id not in groups:
-                            groups[group_id] = []
-                        groups[group_id].append(detail)
-                    
-                    # 为每组发送回调
-                    loop = asyncio.get_running_loop()
-                    for group_id, group_details in groups.items():
-                        page_numbers = [detail.page_no for detail in group_details]
-                        await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_numbers)
 
         # 根据页级执行结果聚合主任务状态
         with SessionLocal() as db:
@@ -344,6 +343,174 @@ def send_callback_message(task_id, page_number):
 
         except Exception as e:
             logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
+
+
+async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):
+    """
+    处理一个批次的OCR识别（可能包含多页）。
+    对批次PDF调用一次OCR，然后按 PAGE BREAK 拆分结果，逐页进行AI结构化提取。
+
+    :param task_id: 任务ID
+    :param batch_info: 批次信息 {batch_index, start_page, end_page, page_count, file_path}
+    :param semaphore: 并发控制信号量
+    :param merge_mode: 是否启用合并模式
+    """
+    async with semaphore:
+        batch_index = batch_info["batch_index"]
+        start_page = batch_info["start_page"]
+        end_page = batch_info["end_page"]
+        page_count = batch_info["page_count"]
+        batch_file = batch_info["file_path"]
+
+        logger.info(
+            f"开始批次OCR: task_id={task_id}, batch={batch_index}, pages={start_page}-{end_page}, file={batch_file}"
+        )
+
+        try:
+            loop = asyncio.get_running_loop()
+            ocr_response = await loop.run_in_executor(ocr_executor, run_ocr_task, batch_file)
+
+            response_code = ocr_response.get("code", ocr_response.get("status_code", 500))
+            if response_code >= 400:
+                error_msg = ocr_response.get("error", f"未知错误，状态码: {response_code}")
+                logger.error(f"批次OCR失败: task_id={task_id}, batch={batch_index}, error={error_msg}")
+                await loop.run_in_executor(aux_executor, feishu_client.send_error_log_message, ErrorLog(
+                    id=task_id, result_msg=f"批次{batch_index} OCR失败: {error_msg}"
+                ))
+                # 标记该批次所有页为失败
+                with SessionLocal() as db:
+                    detail_mapper = OcrTaskDetailMapper(db)
+                    for page_no in range(start_page, end_page + 1):
+                        detail_mapper.update_task_detail(task_id, page_no, {"status": 3})
+                return
+
+            full_ocr_text = ocr_response.get("ocr_text", "")
+            ocr_pages = ocr_response.get("ocr_pages", [])
+            ocr_task_id = ocr_response.get("task_id", "")
+
+            logger.info(
+                f"批次OCR完成: task_id={task_id}, batch={batch_index}, ocr_task_id={ocr_task_id}, "
+                f"text_len={len(full_ocr_text)}, jsonl_pages={len(ocr_pages)}"
+            )
+
+            # 优先使用 JSONL 逐页结果，保留页级 status / error；兜底使用 PAGE BREAK 分隔
+            if ocr_pages:
+                page_results = extract_ocr_page_results_from_jsonl(ocr_pages, start_page, page_count)
+                logger.info(f"使用JSONL逐页结果拆分: task_id={task_id}, batch={batch_index}, pages={len(page_results)}")
+            else:
+                page_texts = split_ocr_text_by_page(full_ocr_text, page_count)
+                page_results = [
+                    {"markdown": page_text, "status": "success", "error": ""}
+                    for page_text in page_texts
+                ]
+                logger.info(f"JSONL不可用，使用PAGE BREAK兜底拆分: task_id={task_id}, batch={batch_index}, pages={len(page_results)}")
+
+            # 逐页进行 AI 结构化提取
+            extract_tasks = []
+            for i, page_result in enumerate(page_results):
+                page_no = start_page + i
+                extract_tasks.append(
+                    _extract_and_save_page(
+                        task_id,
+                        page_no,
+                        page_result.get("markdown", ""),
+                        ocr_task_id,
+                        merge_mode,
+                        page_ocr_status=page_result.get("status", "success"),
+                        page_ocr_error=page_result.get("error", ""),
+                    )
+                )
+            await asyncio.gather(*extract_tasks, return_exceptions=True)
+
+        except Exception as batch_error:
+            logger.error(
+                f"批次OCR异常: task_id={task_id}, batch={batch_index}, error={str(batch_error)}", exc_info=True
+            )
+            with SessionLocal() as db:
+                detail_mapper = OcrTaskDetailMapper(db)
+                for page_no in range(start_page, end_page + 1):
+                    detail_mapper.update_task_detail(task_id, page_no, {"status": 3})
+
+
+async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_task_id: str,
+                                 merge_mode: bool = False,
+                                 page_ocr_status: str = "success",
+                                 page_ocr_error: str = ""):
+    """对单页OCR文本进行AI结构化提取并保存到数据库。"""
+    ai_semaphore = get_ai_extract_semaphore()
+    async with ai_semaphore:
+        try:
+            normalized_page_status = str(page_ocr_status or "success").strip().lower()
+            if normalized_page_status != "success":
+                error_message = page_ocr_error or f"OCR页识别失败，状态: {normalized_page_status}"
+                logger.warning(
+                    f"页面OCR状态异常，跳过结构化提取: task_id={task_id}, page={page_no}, "
+                    f"status={normalized_page_status}, error={error_message}"
+                )
+                with SessionLocal() as db:
+                    detail_mapper = OcrTaskDetailMapper(db)
+                    detail_mapper.update_task_detail(task_id, page_no, {
+                        "ocr_task_id": ocr_task_id,
+                        "ocr_text": ocr_text or "",
+                        "status": 3,
+                        "error_message": error_message,
+                    })
+                return
+
+            if not ocr_text or not ocr_text.strip():
+                logger.warning(f"页面OCR文本为空，跳过提取: task_id={task_id}, page={page_no}")
+                with SessionLocal() as db:
+                    detail_mapper = OcrTaskDetailMapper(db)
+                    detail_mapper.update_task_detail(task_id, page_no, {
+                        "ocr_task_id": ocr_task_id,
+                        "ocr_text": "",
+                        "status": 3,
+                        "error_message": "OCR文本为空"
+                    })
+                return
+
+            loop = asyncio.get_running_loop()
+            structured_response = await loop.run_in_executor(aux_executor, extract_structured_data_from_ocr, ocr_text)
+
+            document_type = structured_response.get("document_type", "")
+            structured_data = structured_response.get("structured_data", None)
+            llm_structured_data = structured_response.get("llm_structured_data", None)
+            regex_structured_data = structured_response.get("regex_structured_data", None)
+
+            group_id = None
+            if structured_data:
+                group_id = structured_data.get('document_no', '')
+
+            with SessionLocal() as db:
+                detail_mapper = OcrTaskDetailMapper(db)
+                update_data = {
+                    "ocr_task_id": ocr_task_id,
+                    "ocr_text": ocr_text,
+                    "document_type": document_type,
+                    "structured_data":
+                        json.dumps(structured_data, ensure_ascii=False) if structured_data else None,
+                    "single_structured_data":
+                        json.dumps(structured_data, ensure_ascii=False) if structured_data else None,
+                    "llm_structured_data":
+                        json.dumps(llm_structured_data, ensure_ascii=False) if llm_structured_data else None,
+                    "regex_structured_data":
+                        json.dumps(regex_structured_data, ensure_ascii=False) if regex_structured_data else None,
+                    "group_id": group_id,
+                    "status": 2  # 执行成功
+                }
+                detail_mapper.update_task_detail(task_id, page_no, update_data)
+                logger.info(f"页面提取完成: task_id={task_id}, page={page_no}, doc_type={document_type}")
+
+        except Exception as e:
+            logger.error(f"页面提取失败: task_id={task_id}, page={page_no}, error={str(e)}", exc_info=True)
+            with SessionLocal() as db:
+                detail_mapper = OcrTaskDetailMapper(db)
+                detail_mapper.update_task_detail(task_id, page_no, {"status": 3})
+        finally:
+            if not merge_mode:
+                logger.info(f"发送回调信息: task_id={task_id}, page={page_no}")
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_no)
 
 
 async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):

@@ -40,9 +40,18 @@ def _build_error_response(status_code: int, error: str, task_id=None, ocr_text: 
     return {"code": status_code, "status_code": status_code, "error": error, "task_id": task_id, "ocr_text": ocr_text}
 
 
+def _normalize_status(status: object) -> str:
+    return str(status or "").strip().lower()
+
+
+def _is_downloadable_status(status: object) -> bool:
+    status_text = _normalize_status(status)
+    return status_text in {"completed", "partial_failed"}
+
+
 def _is_terminal_error_status(status: object) -> bool:
-    status_text = str(status or "").lower()
-    return any(flag in status_text for flag in ("failed", "error", "not_found"))
+    status_text = _normalize_status(status)
+    return status_text in {"failed", "error", "not_found"}
 
 
 def _parse_retry_after_seconds(retry_after_value) -> float | None:
@@ -194,9 +203,12 @@ def run_ocr_task(pdf_file_path):
             # 使用 \r 实现单行刷新显示进度
             logger.info(f"[已耗时 {elapsed}s] 当前状态: {status}")
 
-            if status == "completed":
+            if _is_downloadable_status(status):
                 unhealthy_since = None
-                logger.info(f"\n🎉 服务器处理完成 (含容错整理)！准备下载...")
+                if _normalize_status(status) == "partial_failed":
+                    logger.warning(f"\n⚠️ OCR任务部分失败但结果可下载: task_id={task_id}, status={status}")
+                else:
+                    logger.info(f"\n🎉 服务器处理完成 (含容错整理)！准备下载...")
                 break
             elif _is_terminal_error_status(status):
                 if unhealthy_since is None:
@@ -248,8 +260,9 @@ def run_ocr_task(pdf_file_path):
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(extract_path)
 
-        # 读取解压目录中的MD文件（假设只有一个）
+        # 读取解压目录中的MD文件和JSONL文件
         md_files_content = ""
+        jsonl_pages = []  # JSONL 逐页结果列表
         original_pdf_name = os.path.splitext(os.path.basename(pdf_file_path))[0]  # 获取原始PDF文件名（不含扩展名）
 
         for root, dirs, files in os.walk(extract_path):
@@ -262,11 +275,32 @@ def run_ocr_task(pdf_file_path):
                         with open(md_file_path, 'r', encoding='utf-8') as f:
                             md_files_content = f.read()
                             logger.info(f"读取MD文件: {file}, 长度: {len(md_files_content)}")
-                        break  # 只读取第一个匹配的文件
 
-        logger.info(f"✨ 处理成功！📁 原始压缩包: {zip_path}  Markdown 目录: {extract_path} 📝 MD文件内容长度: {len(md_files_content)}")
-        # 返回MD文件内容
-        return {"code": 200, "status_code": 200, "task_id": task_id, "ocr_text": md_files_content}
+                elif file.lower().endswith('.jsonl') and file.lower().startswith('results_'):
+                    # 读取 results_*.jsonl 文件，解析逐页OCR结果
+                    jsonl_file_path = os.path.join(root, file)
+                    try:
+                        import json as _json
+                        with open(jsonl_file_path, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line:
+                                    jsonl_pages.append(_json.loads(line))
+                        # 按 page 字段排序（page 从 0 开始）
+                        jsonl_pages.sort(key=lambda x: x.get("page", 0))
+                        logger.info(f"读取JSONL文件: {file}, 页数: {len(jsonl_pages)}")
+                    except Exception as jsonl_err:
+                        logger.warning(f"读取JSONL文件失败: {file}, error={jsonl_err}")
+
+        logger.info(
+            f"✨ 处理成功！📁 原始压缩包: {zip_path}  Markdown 目录: {extract_path} "
+            f"📝 MD文件内容长度: {len(md_files_content)}, JSONL页数: {len(jsonl_pages)}"
+        )
+        # 返回MD文件内容和JSONL逐页结果
+        return {
+            "code": 200, "status_code": 200, "task_id": task_id,
+            "ocr_text": md_files_content, "ocr_pages": jsonl_pages
+        }
 
     except Exception as e:
         logger.error(f"\n❌ 下载或解压失败: {e}")

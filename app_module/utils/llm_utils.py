@@ -1,16 +1,26 @@
 import json
-import os
+import time
 
 from typing import Dict, Any, Optional
 from json_repair import repair_json
 
 import requests
 
-from app_module.template.prompts_template import get_prompt_by_document_type
 from app_module.core.config import settings
+from app_module.logger.logger_config import setup_logger
+from app_module.template.prompts_template import get_prompt_by_document_type
+
+logger = setup_logger("llm_utils")
+
+
+def get_llm_api_key(api_key: str | None = None) -> str:
+    resolved_api_key = api_key or settings.resolved_llm_api_key
+    if not resolved_api_key:
+        raise ValueError("未配置 LLM_API_KEY 或 CSCI_DEEPSEEK_API_KEY")
+    return resolved_api_key
 
 class DeepSeekAPI:
-    def __init__(self, api_key: str, base_url: str = "https://ai-base-service.biz.3311csci.com/api/v1"):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None, timeout: int | float | None = None):
         """
         初始化 DeepSeek API 客户端
 
@@ -18,17 +28,18 @@ class DeepSeekAPI:
             api_key: DeepSeek API 密钥
             base_url: API 基础 URL，默认为 v1 版本
         """
-        self.api_key = api_key
-        self.base_url = base_url
+        self.api_key = get_llm_api_key(api_key)
+        self.base_url = (base_url or settings.LLM_BASE_URL).rstrip("/")
+        self.timeout = max(1, int(timeout or settings.LLM_TIMEOUT_SECONDS))
         self.headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
+            "Authorization": f"Bearer {self.api_key}"
         }
 
     def chat_completion(
             self,
             messages: list,
-            model: str = "deepseek-v1",
+            model: str | None = None,
             temperature: float = 0.7,
             stream: bool = False,
             **kwargs
@@ -50,21 +61,29 @@ class DeepSeekAPI:
         url = f"{self.base_url}/chat/completions"
 
         payload = {
-            "model": model,
+            "model": model or settings.LLM_CHAT_MODEL,
             "messages": messages,
             "temperature": temperature,
             "stream": stream,
             **kwargs
         }
 
-        response = requests.post(url, headers=self.headers, json=payload, timeout=60)
+        start_time = time.time()
+        response = requests.post(url, headers=self.headers, json=payload, timeout=self.timeout)
+        elapsed_time = time.time() - start_time
 
         if response.status_code == 200:
+            logger.info(
+                f"调用大模型API成功 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+            )
             return response.json()
         else:
+            logger.error(
+                f"调用大模型API失败 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+            )
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
-    def embeddings(self, input_text: str or list, model: str = "deepseek-reasoner") -> Dict[str, Any]:
+    def embeddings(self, input_text: str | list, model: str | None = None) -> Dict[str, Any]:
         """
         调用 DeepSeek 嵌入 API
 
@@ -78,25 +97,35 @@ class DeepSeekAPI:
         url = f"{self.base_url}/embeddings"
 
         payload = {
-            "model": model,
+            "model": model or settings.LLM_EMBEDDING_MODEL,
             "input": input_text
         }
 
-        response = requests.post(url, headers=self.headers, json=payload)
+        start_time = time.time()
+        response = requests.post(url, headers=self.headers, json=payload, timeout=self.timeout)
+        elapsed_time = time.time() - start_time
 
         if response.status_code == 200:
+            logger.info(
+                f"调用大模型向量API成功 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+            )
             return response.json()
         else:
+            logger.error(
+                f"调用大模型向量API失败 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+            )
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
 
 def call_deepseek_api(
-        api_key: str,
         messages: list,
-        model: str = "deepseek-v3",
+        api_key: str | None = None,
+        model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048
-) -> Optional[Dict[str, Any]]:
+        max_tokens: int = 2048,
+        base_url: str | None = None,
+        timeout: int | float | None = None,
+) -> Optional[str]:
     """
     快速调用 DeepSeek API 的便捷函数
 
@@ -108,13 +137,13 @@ def call_deepseek_api(
         max_tokens: 最大 token 数
 
     Returns:
-        API 响应或 None（如果请求失败）
+        第一个候选消息的文本内容，失败时返回 None
     """
     try:
-        client = DeepSeekAPI(api_key=api_key)
+        client = DeepSeekAPI(api_key=api_key, base_url=base_url, timeout=timeout)
         results = client.chat_completion(
             messages=messages,
-            model=model,
+            model=model or settings.LLM_CHAT_MODEL,
             temperature=temperature,
             max_tokens=max_tokens
         )
@@ -125,7 +154,7 @@ def call_deepseek_api(
         else:
             return None
     except Exception as e:
-        print(f"调用 DeepSeek API 时发生错误: {e}")
+        logger.error(f"调用 DeepSeek API 时发生错误: {e}")
         return None
 
 
@@ -136,7 +165,11 @@ def generate_prompt(ocr_text: str, document_type: str) -> str:
 
 
 def extract_data_with_llm(ocr_text: str,
-                          document_type: str = None) -> Optional[Dict[str, Any]]:
+                          document_type: str = None,
+                          model: str | None = None,
+                          api_key: str | None = None,
+                          base_url: str | None = None,
+                          timeout: int | float | None = None) -> Optional[Dict[str, Any]]:
     """
     使用大模型直接从OCR文本提取结构化数据的简化方法
 
@@ -150,9 +183,6 @@ def extract_data_with_llm(ocr_text: str,
     if not ocr_text or ocr_text.strip() == "":
         return None
 
-    # 获取API密钥
-    api_key = settings.CSCI_DEEPSEEK_API_KEY
-
     # 生成prompt
     prompts = generate_prompt(ocr_text, document_type)
 
@@ -164,7 +194,10 @@ def extract_data_with_llm(ocr_text: str,
     # 调用API
     response_content = call_deepseek_api(  # 修正变量名
         api_key=api_key,
-        messages=message
+        messages=message,
+        model=model or settings.LLM_CHAT_MODEL,
+        base_url=base_url,
+        timeout=timeout,
     )
 
     if response_content is None:
@@ -180,7 +213,9 @@ def extract_data_with_llm(ocr_text: str,
 # 使用示例
 if __name__ == "__main__":
     # 示例用法
-    API_KEY = "sk-YTa0NgyzqHeSQ7g6taKr4WMKwMIWrwUL"
+    api_key = settings.resolved_llm_api_key
+    if not api_key:
+        raise RuntimeError("请先在 .env 中配置 LLM_API_KEY 或 CSCI_DEEPSEEK_API_KEY")
 
     ocr_text = """
 Delivery Note
@@ -252,7 +287,7 @@ to be Continued
 
     # 调用 API
     result = call_deepseek_api(
-        api_key=API_KEY,
+        api_key=api_key,
         messages=messages
     )
 

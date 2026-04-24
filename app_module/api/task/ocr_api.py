@@ -68,6 +68,7 @@ async def create_ocr_task(
             "task_id": task_id,
             "file_url": param.file_url,
             "merge_mode": param.merge_mode,
+            "split_pages": param.split_pages,
         })
         if not queued_immediately:
             task_mapper.delete_task(task_id)
