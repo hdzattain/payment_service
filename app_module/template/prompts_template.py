@@ -204,6 +204,116 @@ Certificate No.: CC 1993
     "supplier_name": "海興材料有限公司 Hoi Hing Building Materials Co. Limited"
 }}
 
+### 案例 3：
+#### 输入：
+# **starcard**
+# CALTEX
+
+# 交易概要 Transaction Summary
+
+**發票編號 Document No** 0054532622
+**頁數 Page** 3/12
+**結算期 Billing Period** 01/07/2024 - 31/07/2024
+**賬戶編號 Account No** 0700030073
+
+| 內容 Description | 產品 Product | 數量 Quantity | 金額 Amount HKD |
+| :--- | :--- | :--- | :--- |
+| 789655******6652 | Gold w Techron | 402.38 | 6,512.74 |
+| | | 402.38 | 6,512.74 |
+| 789655******6660 | Gold w Techron | 88.23 | 1,430.33 |
+| | | 88.23 | 1,430.33 |
+| 789655******7512 | Gold w Techron | 153.82 | 2,493.20 |
+| | Lubricants | 1.00 | 50.40 |
+| | | 153.82 | 2,543.60 |
+| 789655******8612 | Diesel w Techron D | 55.97 | 473.99 |
+| | | 55.97 | 473.99 |
+| 789655******8620 | Diesel w Techron D | 129.75 | 1,099.05 |
+| | | 129.75 | 1,099.05 |
+| 789655******9460 | Gold w Techron | 280.18 | 4,533.17 |
+| | | 280.18 | 4,533.17 |
+
+- 查詢熱線 Enquiry Hotline: 2582 6288;失咭熱線 Lost Card Hotline: 2582 6270.
+- 電郵地址 E-mail Address: starcard-hk@chevron.com
+
+#### 输出：
+{{
+    "document_type": "invoice",
+    "product_service": [
+        {{
+            "product_service_name": "Gold w Techron",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "402.38",
+            "product_service_unit_price": "",
+            "product_service_amount": "6512.74",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Gold w Techron",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "88.23",
+            "product_service_unit_price": "",
+            "product_service_amount": "1430.33",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Gold w Techron",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "153.82",
+            "product_service_unit_price": "",
+            "product_service_amount": "2493.20",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Lubricants",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "1.00",
+            "product_service_unit_price": "",
+            "product_service_amount": "50.40",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Diesel w Techron D",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "55.97",
+            "product_service_unit_price": "",
+            "product_service_amount": "473.99",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Diesel w Techron D",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "129.75",
+            "product_service_unit_price": "",
+            "product_service_amount": "1099.05",
+            "product_service_contract_no": ""
+        }},
+        {{
+            "product_service_name": "Gold w Techron",
+            "product_service_specification": "",
+            "product_service_unit": "",
+            "product_service_quantity": "280.18",
+            "product_service_unit_price": "",
+            "product_service_amount": "4533.17",
+            "product_service_contract_no": ""
+        }}
+    ],
+    "order_contact": [],
+    "document_no": "0054532622",
+    "invoice_date": "",
+    "site_name": "",
+    "currency": "HKD",                               
+    "total_amount": "",
+    "supplier_id": "",
+    "supplier_name": ""
+}}
+
+
 ## OCR识别文本：
 {ocr_text}
 

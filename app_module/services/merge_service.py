@@ -90,7 +90,7 @@ MERGE_JSON_STRUCTURES = {
 }
 
 # AI合并Prompt模板
-AI_MERGE_PROMPT = """你是一名专业的文档数据合并专家。以下是同一份文档（相同编号、相同类型）不同页面的结构化提取结果（JSON格式），请你完成以下任务：
+AI_MERGE_PROMPT = """你是一名专业的文档数据合并专家。以下是同一份文档（相同编号、相同类型）不同页面的结构化提取结果及对应OCR原文（JSON格式），请你完成以下任务：
 
 ## 任务说明
 1. **审查**：检查各页面结构化数据的准确性和一致性，发现明显的识别错误并纠正（如数字、名称、金额的误识别）
@@ -101,8 +101,9 @@ AI_MERGE_PROMPT = """你是一名专业的文档数据合并专家。以下是�
    - 列表字段（如product_service、transactions、order_contact等）：合并所有页面的记录并去重
    - total_amount：如果原始数据中有明确的total_amount值，优先使用；否则根据合并后的product_service重新计算
    - 金额字段保持数字格式，保留小数点
+4. **参考OCR原文**：当结构化数据存在缺失、冲突或明显错误时，可结合对应页面的 `ocr_text` 进行纠正和补充理解，但不要凭空臆造不存在的信息。
 
-## 各页面结构化数据
+## 各页面结构化数据及OCR原文
 {pages_json}
 
 ## 输出JSON结构要求（字段名、层级、类型必须完全匹配）
@@ -201,6 +202,17 @@ def calculate_total_amount(products: list) -> str:
     return f"{round(total, 2)}"
 
 
+def _build_page_merge_prompt_payload(group_pages: list) -> list[dict[str, Any]]:
+    pages_info = []
+    for page_data in group_pages:
+        pages_info.append({
+            "page_no": page_data['page_no'],
+            "data": page_data['structured_data'],
+            "ocr_text": page_data.get('ocr_text') or "",
+        })
+    return pages_info
+
+
 async def ai_merge_pages(group_pages: list, document_type: str) -> Optional[Dict[str, Any]]:
     """
     使用DeepSeek AI进行智能合并（审查、纠错、去重）
@@ -212,14 +224,8 @@ async def ai_merge_pages(group_pages: list, document_type: str) -> Optional[Dict
     Returns:
         合并后的结构化数据，AI调用失败时返回None
     """
-    # 构建各页面数据的JSON
-    pages_info = []
-    for i, page_data in enumerate(group_pages):
-        pages_info.append({
-            "page_no": page_data['page_no'],
-            "data": page_data['structured_data']
-        })
-
+    # 构建各页面结构化数据 + OCR原文的JSON
+    pages_info = _build_page_merge_prompt_payload(group_pages)
     pages_json = json.dumps(pages_info, ensure_ascii=False, indent=2)
 
     # 获取该文档类型的精简JSON结构定义
