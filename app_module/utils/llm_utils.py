@@ -13,6 +13,20 @@ from app_module.template.prompts_template import get_prompt_by_document_type
 logger = setup_logger("llm_utils")
 
 
+def _serialize_json_for_log(data: Any) -> str:
+    try:
+        return json.dumps(data, ensure_ascii=False, default=str)
+    except Exception:
+        return str(data)
+
+
+def _read_response_body_for_log(response: requests.Response) -> tuple[Any, str]:
+    try:
+        return response.json(), "json"
+    except ValueError:
+        return response.text, "text"
+
+
 def get_llm_api_key(api_key: str | None = None) -> str:
     resolved_api_key = api_key or settings.resolved_llm_api_key
     if not resolved_api_key:
@@ -64,22 +78,31 @@ class DeepSeekAPI:
             "model": model or settings.LLM_CHAT_MODEL,
             "messages": messages,
             "temperature": temperature,
+            "enable_thinking": False, # 禁用思考模式
             "stream": stream,
             **kwargs
         }
 
+        logger.info(
+            f"调用大模型API请求JSON | model: {payload['model']} | url: {url} | input_json: {_serialize_json_for_log(payload)}"
+        )
+
         start_time = time.time()
         response = requests.post(url, headers=self.headers, json=payload, timeout=self.timeout)
         elapsed_time = time.time() - start_time
+        response_body, response_body_type = _read_response_body_for_log(response)
+        response_body_log = _serialize_json_for_log(response_body)
 
         if response.status_code == 200:
             logger.info(
-                f"调用大模型API成功 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+                f"调用大模型API成功 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
-            return response.json()
+            if isinstance(response_body, dict):
+                return response_body
+            raise Exception(f"API 响应不是有效JSON: {response_body_log}")
         else:
             logger.error(
-                f"调用大模型API失败 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+                f"调用大模型API失败 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
@@ -101,18 +124,26 @@ class DeepSeekAPI:
             "input": input_text
         }
 
+        logger.info(
+            f"调用大模型向量API请求JSON | model: {payload['model']} | url: {url} | input_json: {_serialize_json_for_log(payload)}"
+        )
+
         start_time = time.time()
         response = requests.post(url, headers=self.headers, json=payload, timeout=self.timeout)
         elapsed_time = time.time() - start_time
+        response_body, response_body_type = _read_response_body_for_log(response)
+        response_body_log = _serialize_json_for_log(response_body)
 
         if response.status_code == 200:
             logger.info(
-                f"调用大模型向量API成功 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+                f"调用大模型向量API成功 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
-            return response.json()
+            if isinstance(response_body, dict):
+                return response_body
+            raise Exception(f"向量API响应不是有效JSON: {response_body_log}")
         else:
             logger.error(
-                f"调用大模型向量API失败 | model: {payload['model']} | status_code: {response.status_code} | 耗时: {elapsed_time:.2f}秒"
+                f"调用大模型向量API失败 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
