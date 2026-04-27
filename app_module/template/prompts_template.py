@@ -878,6 +878,7 @@ TRANSACTION_RECORD_PROMPT = """
    - 列表/数组处理：
      - transactions：有多少交易记录就提取多少，无则返回空数组[]；
    - 嵌套结构：严格按层级提取（transactions为数组对象）；
+   - 补充：document_no 字段优先填充「檔案參考號、File Reference」；若无可提取的檔案參考號，則用「iGTB 參考號 iGTB Reference」填充；两者均无则填 ""；
 3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测、不补充任何未提及的信息；
 4. 格式统一：
    - 名称/编号/联系方式保留原始内容（含括号、符号、中英文），不做翻译或修改。
@@ -1019,10 +1020,10 @@ CamScanner
 #### 输出：
 {{
     "document_type": "transaction",
-    "document_no": "",
+    "document_no": "02127063960",
     "document_name": "",
     "document_status": "",
-    "igbt_reference": "02127063960",
+    “igbt_reference": "02127063960",
     "originating_account_number": "012499-2-020951-3",
     "originating_account_name": "CHINA STATE - STEC JOINT VENTURE",
     "effective_date": "2025-12-12",
@@ -1060,10 +1061,16 @@ OR ORDER
 港  幣
 H.K. DOLLARS **柒万叁仟叁佰柒拾肆元整** &......
 
+⑈000086⑈ 012⑉699⑆ 20300566⑈
+
+Scanned with
+CamScanner
+
+
 #### 输出：
 {{
     "document_type": "transaction",
-    "document_no": "",
+    "document_no": "00008601269920300566",
     "document_name": "",
     "document_status": "",
     "igbt_reference": "",
@@ -1092,7 +1099,7 @@ H.K. DOLLARS **柒万叁仟叁佰柒拾肆元整** &......
 ## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
   "document_type": "字符串（文件类型，固定为\"transaction\"）",
-  "document_no": "字符串（文件编号，檔案參考號，如：F2534271682）",
+  "document_no": "字符串（文件编号，檔案參考號，如：F2534271682，优先填檔案參考號，无则填 iGTB 參考號，均无则填""）",
   "document_name": "字符串（檔案名稱，如：Y2025121001.DAT）",
   "document_status": "字符串（狀態，如：等候第一次授權Pending 1st Authorisation）",
   "igbt_reference": "字符串（IGBT编号，如：02121750335）",
