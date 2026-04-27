@@ -968,27 +968,46 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
 
     logger.info(f'开始从OCR文本中提取结构化数据: {json.dumps(ocr_text, ensure_ascii=False)}')
 
+    text = ocr_text
+    text_lower = text.lower()
+    text_no_space = text.replace(" ", "")
+    text_lower_no_space = text_lower.replace(" ", "")
+
     # 首先判断ocr_text属于哪类票据，然后提取相应字段
     if "物資付款辦理單" in ocr_text or "物资付款办理单" in ocr_text:
         return extract_receipts_form_data(ocr_text)
-    elif ("delivery note" in ocr_text.lower()
+    elif ("delivery note" in text_lower
           or "送貨簽收單" in ocr_text
           or "送貨單" in ocr_text
           or "交貨單" in ocr_text
-          or "delivery order" in ocr_text.lower()):
+          or "送货签收单" in ocr_text
+          or "送货单" in ocr_text
+          or "交货单" in ocr_text
+          or "delivery order" in text_lower):
         # 其他类型票据的提取逻辑
         return extract_delivery_note_data(ocr_text)
-    elif ("發invoice票" in ocr_text.lower().replace(" ", "")
-          or "发invoice票" in ocr_text.lower().replace(" ", "")
-          or "invoice" in ocr_text.lower()
-          or "發票" in ocr_text.replace(" ", "")):
+    elif ("發invoice票" in text_lower_no_space
+          or "发invoice票" in text_lower_no_space
+          or "invoice" in text_lower
+          or "发票" in ocr_text
+          or "發票" in text_no_space):
         # 这里可以添加发票的提取逻辑
         return extract_invoice_form_data(ocr_text)
-    elif "地盤零星材料申請表" in ocr_text:
+    elif ("地盤零星材料申請表" in ocr_text
+        or "地盘零星材料申请表" in ocr_text):
         # 默认返回空字典
         return extract_misc_materials_data(ocr_text)
-    elif ("轉帳記錄" in ocr_text or "交易記錄" in ocr_text or "交易詳情" in ocr_text or "Transaction Record" in ocr_text or "Transaction Detail" in ocr_text
-          or "igbt" in ocr_text.lower() or "祈付" in ocr_text or "H.K.DOLLARS" in ocr_text or "H.K. DOLLARS" in ocr_text):
+    elif ("轉帳記錄" in ocr_text
+          or "交易記錄" in ocr_text
+          or "交易詳情" in ocr_text
+          or "转账记录" in ocr_text
+          or "交易记录" in ocr_text
+          or "交易详情" in ocr_text
+          or "transaction record" in text_lower
+          or "transaction detail" in text_lower
+          or "igbt" in text_lower
+          or "祈付" in ocr_text
+          or "or order" in text_lower):
         return extract_transaction_record_data(ocr_text)
     else:
         logger.warning("无法识别票据类型，返回空结构化数据")

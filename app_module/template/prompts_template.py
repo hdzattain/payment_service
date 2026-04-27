@@ -784,44 +784,43 @@ TRANSACTION_RECORD_PROMPT = """
 ## 示例案例（帮助理解任务）
 ### 案例 1：
 #### 输入：
+# 中國銀行(香港) iGTB
+# BANK OF CHINA (HONG KONG)
+
+- 參考號 Request ID:25342047714
+- 列印人員 Request User ID:YAN
+製作日 For Date / Request Date & Time:8 Dec 2025 12:43
+
+# iGTB 012-875-68-29941-5>工作列Work Queue >檔案指令報告File Instruction Report
+
+## 檔案詳情 File Detail
+- 更新於 Refreshed as at:8 Dec 2025 12:43
+
+- 檔案名稱File Name: Y2025121001.DAT
+- 檔案參考號File Reference: F2534271682
+- 狀態 Status: 等候第一次授權Pending 1st Authorisation
+- iGTB參考號 iGTB Reference: 02121750335
+- 指示類型Instruction Type: ACH 支付文件上載ACH Payment File Upload
+- 最後跟進Last Action: 8 Dec 2025 12:42 GMT+08:00 by YEUNG SZE MAN
+
+## 交易詳情Transaction Detail
+
+- 發起賬戶號碼Originating Account Number: 012-699-2-030055-3
+- 發起賬戶名稱Originating Account Name: CHINA STATE - STEC JOINT VENTURE
+- 生效日期 Effective Date: 2025/12/10
+- 交易筆數 Transaction Count: 1
+- 總金額 Total Amount: HKD 122206.00
+
+| 編號 No. | 目標賬戶號碼 Destination A/C | 目標賬戶名稱 Destination A/C Name | 貨幣 Currency | 金額 Amount | 參考號 Reference | 備註 Remark |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | 004111418042001 | Construction Industry Council | HKD | 122206.00 | Y2025121001 | DN3418712 |
+
 iGTB 012-875-68-29941-5>工作列Work Queue >檔案指令報告File Instruction Report
+Y2025121001.DAT F2534271682
+Page 1 of 2
 
-檔案詳情 File Detail
-檔案名稱File Name: Y2025121001.DAT
-狀態 Status: 等候第一次授權Pending 1st Authorisation
-指示類型Instruction Type: ACH 支付文件上載ACH Payment File Upload
-最後跟進Last Action: 8 Dec 2025 12:42 GMT+08:00 by YEUNG SZE MAN
-檔案參考號File Reference: F2534271682
-iGTB參考號 iGTB Reference: 02121750335
-更新於 Refreshed as at: 8 Dec 2025 12:43
-
-交易詳情Transaction Detail
-發起賬戶號碼Originating Account Number: 012-699-2-030055-3
-生效日期 Effective Date: 2025/12/10
-交易筆數 Transaction Count: 1
-發起賬戶名稱Originating Account Name: CHINA STATE - STEC JOINT VENTURE
-總金額 Total Amount: HKD 122206.00
-
-<table>
-  <tr>
-    <th>編號 No.</th>
-    <th>目標賬戶號碼 Destination A/C</th>
-    <th>目標賬戶名稱 Destination A/C Name</th>
-    <th>貨幣 Currency</th>
-    <th>金額 Amount</th>
-    <th>參考號 Reference</th>
-    <th>備註 Remark</th>
-  </tr>
-  <tr>
-    <td>1</td>
-    <td>004111418042001</td>
-    <td>Construction Industry Council</td>
-    <td>HKD</td>
-    <td>122206.00</td>
-    <td>Y2025121001</td>
-    <td>DN3418712</td>
-  </tr>
-</table>
+Scanned with
+CamScanner
 
 #### 输出：
 {{
@@ -850,49 +849,62 @@ iGTB參考號 iGTB Reference: 02121750335
 
 ### 案例 2：
 #### 输入：
-交易詳情
+# 中國銀行(香港) iGTB
 
-繳付賬單
-• 檢查一次密碼
+# 工作列 查詢 信息管理 支付 環球貿易業務 收款 財資 流動性管理 本港特色服務 列印
 
-GTB卡號
+# 交易詳情
+
+< 返回 記錄和評論
+
+## 繳付賬單
+* 標記第一次存檔
+
+**iGTB參考號**
 02127063960
 
-經辦人員
+**交易日期和時間**
+2025年12月12日 15:11 GMT+08:00
+
+**經辦人員**
 AGNES
 
-交易日期和時間
-2025年12月12日15:11 GMT+08:00
-
-由*
+**由***
 CHINA STATE - STEC JOINT VENTURE
-012499-2-020951-3
-中國省港
-美元/港幣帳戶
+012-699-2-030055-3
+中國香港 港元儲蓄賬戶
 
-至*
-環境保護號:
-01-小額付款賬單,
+**至***
+環境保護署
+01 - 化學廢物繳費單
 035047011
 
-支付金額
+**支付金額**
 HKD 6,754.00
 
-交易詳情
-金額
+## 交易詳情
+
+**金額**
 支付金額*
 HKD 6,754.00
 
-支付時間表
-支付狀態*
+## 支付時間表
+
+**支付時間表***
 即時遞交
 
-補充資料
-內部支付備忘
+## 補充資料
+
+**內部支付備忘**
 035047011
 
-客戶參考號
+**客戶參考號**
 035047011
+
+版權條款 | 重要聲明及私隱政策聲明 | 保安資訊 | 超連結政策 | 系統升級時間表 | 表格和申請 | 企業電子及線上服務條款
+
+Scanned with
+CamScanner
 
 #### 输出：
 {{
@@ -903,13 +915,13 @@ HKD 6,754.00
     "igbt_reference": "02127063960",
     "originating_account_number": "012499-2-020951-3",
     "originating_account_name": "CHINA STATE - STEC JOINT VENTURE",
-    "effective_date": "2025-12-12 15:11:00",
+    "effective_date": "2025-12-12",
     "transaction_count": "",
     "currency": "HKD",
     "total_amount": "6754.00",
     "transactions": [
         {{
-            "transactions_destination_account_number": "035047011",
+            "transactions_destination_account_number": "",
             "transactions_destination_account_name": "環境保護號: 01-小額付款賬單",
             "transactions_currency": "HKD",
             "transactions_amount": "6754.00",
@@ -921,20 +933,22 @@ HKD 6,754.00
 
 ### 案例 3：
 #### 输入：
-中國銀行(香港)有限公司
-BANK OF CHINA (HONG KONG) LIMITED
-灣仔中環海外大廈分行：香港灣仔軒尼詩道139號中環海外大廈地下C鋪
+# 中國銀行(香港)有限公司
+**BANK OF CHINA (HONG KONG) LIMITED**
+
+灣仔中國海外大廈分行：香港灣仔軒尼詩道139號中國海外大廈地下C舖
 Wan Chai (China Overseas Building) Branch
 Shop C, G/F, China Overseas Building, 139 Hennessy Road, Wan Chai, Hong Kong.
 
-PAY 中華電力有限公司
+**04**     **12**      **2025**
+日 DAY      月 MONTH      年 YEAR
 
-港幣
-H.K. DOLLARS 柒万叁仟叁佰柒拾肆元整
+祈付
+PAY **中華電力有限公司**  或指定人
+OR ORDER
 
-HK $73,374.00
-
-CHINA STATE - STEC JOINT VENTURE
+港  幣
+H.K. DOLLARS **柒万叁仟叁佰柒拾肆元整** &......
 
 #### 输出：
 {{
@@ -945,8 +959,8 @@ CHINA STATE - STEC JOINT VENTURE
     "igbt_reference": "",
     "originating_account_number": "",
     "originating_account_name": "CHINA STATE - STEC JOINT VENTURE",
-    "effective_date": "",
-    "transaction_count": "",
+    "effective_date": "2025-12-04",
+    "transaction_count": "1",
     "currency": "HKD",
     "total_amount": "73374.00",
     "transactions": [
