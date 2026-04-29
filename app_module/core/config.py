@@ -1,5 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from urllib.parse import urljoin
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 定义.env文件路径
 ENV_FILE_PATH = Path(__file__).parent.parent.parent / ".env"
@@ -24,8 +26,18 @@ class Settings(BaseSettings):
     FEISHU_BOT_GROUP_ID: str
 
     # OCR API配置
-    ocr_api_key: str  # 添加缺失的配置项
+    ocr_api_key: str | None = None  # 暂未使用：旧版API Key鉴权兼容字段
     OLMOCR_API_BASE: str = "https://olmocr.c-smart.hk"
+    OLMOCR_AUTH_ENABLED: bool = True
+    OLMOCR_AUTH_USERNAME: str | None = None
+    OLMOCR_AUTH_PASSWORD: str | None = None
+    AUTH_USERNAME: str | None = None  # 兼容 OLMOCR 鉴权文档中的环境变量命名
+    AUTH_PASSWORD: str | None = None
+    OLMOCR_LOGIN_PATH: str = "/login"
+    OLMOCR_SESSION_COOKIE_NAME: str = "ai_x_payment_session"
+    OLMOCR_VERIFY_SSL: bool = False
+    OLMOCR_LOGIN_TIMEOUT_SECONDS: int = 30
+    OLMOCR_REQUEST_TIMEOUT_SECONDS: int = 30
     OCR_MAX_WORKERS: int = 9
     # 文档级任务消费者数量
     OCR_TASK_CONSUMERS: int = 3
@@ -74,6 +86,18 @@ class Settings(BaseSettings):
     @property
     def resolved_llm_api_key(self) -> str | None:
         return self.LLM_API_KEY or self.CSCI_DEEPSEEK_API_KEY
+
+    @property
+    def resolved_olmocr_auth_username(self) -> str | None:
+        return (self.OLMOCR_AUTH_USERNAME or self.AUTH_USERNAME or "").strip() or None
+
+    @property
+    def resolved_olmocr_auth_password(self) -> str | None:
+        return (self.OLMOCR_AUTH_PASSWORD or self.AUTH_PASSWORD or "").strip() or None
+
+    @property
+    def resolved_olmocr_login_url(self) -> str:
+        return urljoin(f"{self.OLMOCR_API_BASE.rstrip('/')}/", self.OLMOCR_LOGIN_PATH.lstrip('/'))
 
     # 配置.env文件路径
     model_config = SettingsConfigDict(env_file=ENV_FILE_PATH, env_file_encoding="utf-8", extra="ignore")

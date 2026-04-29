@@ -31,9 +31,19 @@ OCR_SUBMIT_MIN_INTERVAL_SECONDS = max(0.0, settings.OCR_SUBMIT_MIN_INTERVAL_SECO
 OCR_STATUS_POLL_INTERVAL_SECONDS = max(1.0, settings.OCR_STATUS_POLL_INTERVAL_SECONDS)
 OCR_STATUS_ERROR_FAIL_FAST_SECONDS = max(1, settings.OCR_STATUS_ERROR_FAIL_FAST_SECONDS)
 OCR_STATUS_MAX_WAIT_SECONDS = max(60, settings.OCR_STATUS_MAX_WAIT_SECONDS)
+OLMOCR_AUTH_ENABLED = bool(settings.OLMOCR_AUTH_ENABLED)
+OLMOCR_VERIFY_SSL = bool(settings.OLMOCR_VERIFY_SSL)
+OLMOCR_LOGIN_TIMEOUT_SECONDS = max(5, int(settings.OLMOCR_LOGIN_TIMEOUT_SECONDS))
+OLMOCR_REQUEST_TIMEOUT_SECONDS = max(5, int(settings.OLMOCR_REQUEST_TIMEOUT_SECONDS))
+OLMOCR_SESSION_COOKIE_NAME = (settings.OLMOCR_SESSION_COOKIE_NAME or "ai_x_payment_session").strip() or "ai_x_payment_session"
 
 _submit_lock = threading.Lock()
 _last_submit_at = 0.0
+_session_local = threading.local()
+
+
+class OlmocrAuthConfigurationError(RuntimeError):
+    """Raised when required outbound OLMOCR auth settings are missing."""
 
 
 def _build_error_response(status_code: int, error: str, task_id=None, ocr_text: str = ""):
@@ -78,6 +88,84 @@ def _calculate_retry_delay(attempt: int, retry_after_value=None) -> float:
     return exponential_delay + jitter
 
 
+def _get_thread_session() -> requests.Session:
+    session = getattr(_session_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        _session_local.session = session
+        _session_local.authenticated = False
+    return session
+
+
+def _set_thread_authenticated(authenticated: bool) -> None:
+    _session_local.authenticated = authenticated
+
+
+def _is_thread_authenticated() -> bool:
+    return bool(getattr(_session_local, "authenticated", False))
+
+
+def _ensure_authenticated_session(force_relogin: bool = False) -> requests.Session:
+    session = _get_thread_session()
+
+    if not OLMOCR_AUTH_ENABLED:
+        return session
+
+    if _is_thread_authenticated() and not force_relogin:
+        return session
+
+    username = settings.resolved_olmocr_auth_username
+    password = settings.resolved_olmocr_auth_password
+    if not username or not password:
+        raise OlmocrAuthConfigurationError(
+            "未配置 OLMOCR_AUTH_USERNAME/OLMOCR_AUTH_PASSWORD（或兼容的 AUTH_USERNAME/AUTH_PASSWORD）"
+        )
+
+    _set_thread_authenticated(False)
+    if force_relogin:
+        session.cookies.clear()
+
+    logger.info(
+        f"开始登录 OLMOCR 鉴权会话: login_url={settings.resolved_olmocr_login_url}, username={username}, force_relogin={force_relogin}"
+    )
+    response = session.post(
+        settings.resolved_olmocr_login_url,
+        data={"username": username, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        verify=OLMOCR_VERIFY_SSL,
+        timeout=OLMOCR_LOGIN_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    _set_thread_authenticated(True)
+
+    cookie_names = {cookie.name for cookie in session.cookies}
+    if OLMOCR_SESSION_COOKIE_NAME in cookie_names:
+        logger.info(f"OLMOCR 鉴权登录成功，已获取会话 Cookie: {OLMOCR_SESSION_COOKIE_NAME}")
+    else:
+        logger.warning(
+            f"OLMOCR 登录成功但未检测到预期 Cookie: {OLMOCR_SESSION_COOKIE_NAME}, available_cookies={sorted(cookie_names)}"
+        )
+
+    return session
+
+
+def _send_olmocr_request(method: str, url: str, retry_on_auth_failure: bool = True, **kwargs) -> requests.Response:
+    request_kwargs = dict(kwargs)
+    request_kwargs.setdefault("verify", OLMOCR_VERIFY_SSL)
+
+    session = _ensure_authenticated_session()
+    response = session.request(method=method, url=url, **request_kwargs)
+
+    if OLMOCR_AUTH_ENABLED and retry_on_auth_failure and response.status_code in {401, 403}:
+        logger.warning(
+            f"OLMOCR 请求鉴权失效，准备重新登录后重试: method={method}, url={url}, status_code={response.status_code}"
+        )
+        session = _ensure_authenticated_session(force_relogin=True)
+        response = session.request(method=method, url=url, **request_kwargs)
+
+    return response
+
+
 def _wait_for_submit_slot():
     global _last_submit_at
 
@@ -102,7 +190,12 @@ def _submit_ocr_request(pdf_file_path: str, file_name: str) -> tuple[dict | None
 
             with open(pdf_file_path, 'rb') as file_obj:
                 files_to_upload = [('files', (file_name, file_obj, 'application/pdf'))]
-                response = requests.post(f"{API_BASE}/process", files=files_to_upload, verify=False, timeout=None)
+                response = _send_olmocr_request(
+                    "POST",
+                    f"{API_BASE}/process",
+                    files=files_to_upload,
+                    timeout=None,
+                )
 
             if response.status_code == 429:
                 if attempt > OCR_SUBMIT_MAX_RETRIES:
@@ -129,6 +222,9 @@ def _submit_ocr_request(pdf_file_path: str, file_name: str) -> tuple[dict | None
             logger.info(f"✅ 任务已提交! Task ID: {task_id}")
             return data, None
 
+        except OlmocrAuthConfigurationError as exc:
+            logger.error(f"❌ OCR提交缺少鉴权配置: file={file_name}, error={exc}")
+            return None, _build_error_response(500, str(exc), task_id=task_id)
         except requests.exceptions.RequestException as exc:
             response = getattr(exc, 'response', None)
             status_code = response.status_code if response is not None else 500
@@ -197,7 +293,11 @@ def run_ocr_task(pdf_file_path):
             return _build_error_response(504, f"OCR状态轮询超时，超过 {OCR_STATUS_MAX_WAIT_SECONDS} 秒", task_id=task_id)
 
         try:
-            status_check = requests.get(status_url, verify=False, timeout=30).json()
+            status_check = _send_olmocr_request(
+                "GET",
+                status_url,
+                timeout=OLMOCR_REQUEST_TIMEOUT_SECONDS,
+            ).json()
             status = status_check.get("status")
 
             # 使用 \r 实现单行刷新显示进度
@@ -248,7 +348,12 @@ def run_ocr_task(pdf_file_path):
 
     try:
         logger.info(f"📥 正在从 {download_url} 下载结果...")
-        r = requests.get(download_url, verify=False, stream=True)
+        r = _send_olmocr_request(
+            "GET",
+            download_url,
+            timeout=None,
+            stream=True,
+        )
         r.raise_for_status()  # 确保下载链接有效
 
         with open(zip_path, 'wb') as f:
