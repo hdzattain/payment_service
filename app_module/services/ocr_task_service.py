@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import requests
+import threading
 
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -36,6 +37,9 @@ ocr_executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 aux_executor = ThreadPoolExecutor(max_workers=max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS))
 _page_ocr_semaphore: asyncio.Semaphore | None = None
 _ai_extract_semaphore: asyncio.Semaphore | None = None
+_callback_plan_guard = threading.Lock()
+_task_callback_plans: dict[str, dict[str, int]] = {}
+_task_callback_send_locks: dict[str, threading.Lock] = {}
 
 logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS)}, ai_extract_workers={AI_EXTRACT_WORKERS}")
 
@@ -62,6 +66,55 @@ def get_ai_extract_semaphore() -> asyncio.Semaphore:
     if _ai_extract_semaphore is None:
         _ai_extract_semaphore = asyncio.Semaphore(AI_EXTRACT_WORKERS)
     return _ai_extract_semaphore
+
+
+def initialize_task_callback_plan(task_id: str, total_callbacks: int) -> None:
+    planned_total = max(0, int(total_callbacks or 0))
+    with _callback_plan_guard:
+        _task_callback_plans[task_id] = {"planned_total": planned_total, "sent_count": 0}
+        _task_callback_send_locks.setdefault(task_id, threading.Lock())
+    logger.info(f"初始化任务回调计划: task_id={task_id}, total_callbacks={planned_total}")
+
+
+def clear_task_callback_plan(task_id: str) -> None:
+    with _callback_plan_guard:
+        _task_callback_plans.pop(task_id, None)
+        _task_callback_send_locks.pop(task_id, None)
+
+
+def _get_task_callback_send_lock(task_id: str) -> threading.Lock:
+    with _callback_plan_guard:
+        return _task_callback_send_locks.setdefault(task_id, threading.Lock())
+
+
+def consume_task_callback_slot(task_id: str) -> tuple[bool, bool, int, int]:
+    with _callback_plan_guard:
+        plan = _task_callback_plans.get(task_id)
+        if not plan:
+            return False, False, 0, 0
+
+        plan["sent_count"] += 1
+        sent_count = plan["sent_count"]
+        planned_total = plan["planned_total"]
+        is_final_callback = planned_total > 0 and sent_count >= planned_total
+        return True, is_final_callback, sent_count, planned_total
+
+
+def calculate_callback_status(task_details: list[Any], is_final_callback: bool) -> int:
+    if not is_final_callback:
+        return 1
+
+    detail_statuses = {int(detail.status) for detail in task_details if hasattr(detail, "status")}
+    if not detail_statuses:
+        return 4
+
+    if 0 in detail_statuses or 1 in detail_statuses:
+        return 1
+
+    if 3 in detail_statuses:
+        return 4
+
+    return 2
 
 
 def calculate_task_status_from_details(task_details: list[Any], current_status: int | None = None) -> int:
@@ -166,6 +219,9 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
             replaced_count = detail_mapper.replace_task_details(task_id, detail_records)
             logger.info(f"任务详情记录已重建: task_id={task_id}, detail_count={replaced_count}")
 
+        if not merge_mode:
+            initialize_task_callback_plan(task_id, total_pages)
+
         # 5. 对每个批次执行 OCR，然后拆分结果按页处理 AI 提取
         logger.info(f"开始OCR识别: task_id={task_id}, total_pages={total_pages}, batches={len(batches)}, split_pages={effective_split_pages}")
 
@@ -188,7 +244,14 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(aux_executor, send_callback_message, tid, page_numbers)
 
-            merged_data = await merge_pages_data(task_id, callback_fn=_merge_callback)
+            def _prepare_merge_callback_plan(tid: str, total_callbacks: int):
+                initialize_task_callback_plan(tid, total_callbacks)
+
+            merged_data = await merge_pages_data(
+                task_id,
+                callback_fn=_merge_callback,
+                prepare_callback_plan_fn=_prepare_merge_callback_plan,
+            )
 
             # 更新数据库（不合并的组在 merge_pages_data 内部已写回，这里统一确保一致）
             with SessionLocal() as db:
@@ -229,6 +292,7 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
             await heartbeat_task
         except asyncio.CancelledError:
             pass
+        clear_task_callback_plan(task_id)
 
 
 def send_callback_message(task_id, page_number):
@@ -237,111 +301,127 @@ def send_callback_message(task_id, page_number):
     :param task_id: 任务ID
     :param page_number: 页码，合并模式下为列表，非合并模式下为整数
     """
-    with SessionLocal() as db:
-        task_mapper = OcrTaskMapper(db)
-        detail_mapper = OcrTaskDetailMapper(db)
+    callback_lock = _get_task_callback_send_lock(task_id)
+    with callback_lock:
+        callback_slot_registered = False
+        is_final_callback = False
 
-        # 查询任务信息
-        task_info = task_mapper.get_task_by_id(task_id)
+        with SessionLocal() as db:
+            task_mapper = OcrTaskMapper(db)
+            detail_mapper = OcrTaskDetailMapper(db)
 
-        if not task_info:
-            logger.error(f"未找到任务信息: task_id={task_id}")
-            return
+            # 查询任务信息
+            task_info = task_mapper.get_task_by_id(task_id)
 
-        logger.info(f"开始构建回调数据，任务ID: {task_id}")
-        # 构建回调数据
-        callback_data: dict[str, Any] = {
-            "task_id": task_info.task_id,
-            "status": task_info.status,
-            "foreign_id": task_info.foreign_id,
-            "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime,
-                                                                          'isoformat') else str(
-                task_info.create_datetime), "items": []
-        }
+            if not task_info:
+                logger.error(f"未找到任务信息: task_id={task_id}")
+                return
 
-        # 查询task_id的全部status和页码信息和document_type
-        task_details = detail_mapper.get_task_details_by_task_id(task_id)
-        logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")
+            logger.info(f"开始构建回调数据，任务ID: {task_id}")
+            # 构建回调数据
+            callback_data: dict[str, Any] = {
+                "task_id": task_info.task_id,
+                "status": task_info.status,
+                "foreign_id": task_info.foreign_id,
+                "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime,
+                                                                              'isoformat') else str(
+                    task_info.create_datetime), "items": []
+            }
 
-        overall_status = calculate_task_status_from_details(task_details, task_info.status)
-        callback_data.update({"status": overall_status})
+            # 查询task_id的全部status和页码信息和document_type
+            task_details = detail_mapper.get_task_details_by_task_id(task_id)
+            logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")
 
-        # 处理页码信息
-        if isinstance(page_number, list):
-            # 合并模式：page_no为数组格式
-            first_page_no = page_number[0] if page_number else None
-            if first_page_no is not None:
-                detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
-
-                if detail_info:
-                    logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
-                    items = {
-                        "page_no": page_number,
-                        "raw": detail_info.structured_data,
-                        "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
-                                                                                        'isoformat') else str(
-                            detail_info.create_datetime)}
-
-                    callback_data["items"] = items
-        else:
-            # 非合并模式：page_no为单个值
-            if page_number is not None:
-                detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
-
-                if detail_info:
-                    logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
-                    items = {
-                        "page_no": detail_info.page_no,
-                        "raw": detail_info.structured_data,
-                        "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
-                                                                                        'isoformat') else str(
-                            detail_info.create_datetime)}
-
-                    callback_data["items"] = items
-        callback_url = task_info.callback_url
-        logger.info(f"回调URL: {callback_url}")  # 新增日志
-        # # 打印回调参数
-        logger.info(f"==========回调请求参数: {json.dumps(callback_data, ensure_ascii=False)}")
-        # logger.info(f"===========================回调请求参数:")
-        # 发送回调请求
-        try:
-            response = requests.post(
-                callback_url,
-                json=callback_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
+            overall_status = calculate_task_status_from_details(task_details, task_info.status)
+            callback_slot_registered, is_final_callback, sent_count, planned_total = consume_task_callback_slot(task_id)
+            callback_status = calculate_callback_status(task_details, is_final_callback) if callback_slot_registered else overall_status
+            callback_data.update({
+                "status": callback_status,
+                "callback_seq": sent_count if callback_slot_registered else None,
+                "callback_total": planned_total if callback_slot_registered else None,
+                "is_final_callback": is_final_callback if callback_slot_registered else None,
+            })
+            logger.info(
+                f"任务回调状态已确定: task_id={task_id}, callback_status={callback_status}, overall_status={overall_status}, "
+                f"is_final_callback={is_final_callback}, sent_count={sent_count if callback_slot_registered else 'n/a'}, "
+                f"planned_total={planned_total if callback_slot_registered else 'n/a'}"
             )
 
-            logger.info(f"========回调请求响应信息: task_id={task_id}, http_status={response.status_code}")
+            # 处理页码信息
+            if isinstance(page_number, list):
+                # 合并模式：page_no为数组格式
+                first_page_no = page_number[0] if page_number else None
+                if first_page_no is not None:
+                    detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
 
+                    if detail_info:
+                        logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
+                        items = {
+                            "page_no": page_number,
+                            "raw": detail_info.structured_data,
+                            "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
+                                                                                            'isoformat') else str(
+                                detail_info.create_datetime)}
+
+                        callback_data["items"] = items
+            else:
+                # 非合并模式：page_no为单个值
+                if page_number is not None:
+                    detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
+
+                    if detail_info:
+                        logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
+                        items = {
+                            "page_no": detail_info.page_no,
+                            "raw": detail_info.structured_data,
+                            "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
+                                                                                            'isoformat') else str(
+                                detail_info.create_datetime)}
+
+                        callback_data["items"] = items
+            callback_url = task_info.callback_url
+            logger.info(f"回调URL: {callback_url}")  # 新增日志
+            logger.info(f"==========回调请求参数: {json.dumps(callback_data, ensure_ascii=False)}")
             try:
-                response_json = response.json()
-                logger.info(f"响应体JSON: {response_json}")
+                response = requests.post(
+                    callback_url,
+                    json=callback_data,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=30
+                )
 
-                # 获取业务状态码，提供默认值以防止KeyError
-                business_code = response_json.get('result', -1)
+                logger.info(f"========回调请求响应信息: task_id={task_id}, http_status={response.status_code}")
 
-                # 同时检查HTTP状态码和业务状态码
-                if response.status_code == 200 and business_code == 0:
-                    logger.info(
-                        f"回调请求发送成功: task_id={task_id}, http_status={response.status_code}, business_code={business_code}")
-                else:
-                    logger.error(
-                        f"回调请求部分失败: task_id={task_id}, http_status={response.status_code}, business_code={business_code}, response={response.text}")
+                try:
+                    response_json = response.json()
+                    logger.info(f"响应体JSON: {response_json}")
 
-            except ValueError:
-                # 响应不是JSON格式的情况
-                logger.warning(
-                    f"响应不是JSON格式: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+                    # 获取业务状态码，提供默认值以防止KeyError
+                    business_code = response_json.get('result', -1)
 
-                if response.status_code == 200:
-                    logger.info(f"回调请求HTTP成功: task_id={task_id}, status_code={response.status_code}")
-                else:
-                    logger.error(
-                        f"回调请求HTTP失败: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+                    # 同时检查HTTP状态码和业务状态码
+                    if response.status_code == 200 and business_code == 0:
+                        logger.info(
+                            f"回调请求发送成功: task_id={task_id}, http_status={response.status_code}, business_code={business_code}")
+                    else:
+                        logger.error(
+                            f"回调请求部分失败: task_id={task_id}, http_status={response.status_code}, business_code={business_code}, response={response.text}")
 
-        except Exception as e:
-            logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
+                except ValueError:
+                    logger.warning(
+                        f"响应不是JSON格式: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+
+                    if response.status_code == 200:
+                        logger.info(f"回调请求HTTP成功: task_id={task_id}, status_code={response.status_code}")
+                    else:
+                        logger.error(
+                            f"回调请求HTTP失败: task_id={task_id}, status_code={response.status_code}, response={response.text}")
+
+            except Exception as e:
+                logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
+            finally:
+                if callback_slot_registered and is_final_callback:
+                    clear_task_callback_plan(task_id)
 
 
 async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):

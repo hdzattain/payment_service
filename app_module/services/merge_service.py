@@ -324,7 +324,7 @@ async def _process_single_ai_merge_group(task_id: str, group_key: str, group_pag
         return {page_data['page_no']: merged_data for page_data in group_pages}
 
 
-async def merge_pages_data(task_id: str, callback_fn=None) -> Dict[int, Dict[str, Any]]:
+async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan_fn=None) -> Dict[int, Dict[str, Any]]:
     """
     合并同一任务中相同 document_no + document_type 的页面数据。
 
@@ -332,6 +332,8 @@ async def merge_pages_data(task_id: str, callback_fn=None) -> Dict[int, Dict[str
         task_id: 任务ID
         callback_fn: 可选的回调函数 callback_fn(task_id, page_numbers)，
                      每个分组处理完成后立即触发回调。page_numbers 为该组的页码列表。
+        prepare_callback_plan_fn: 可选回调计划初始化函数
+                                  prepare_callback_plan_fn(task_id, total_callbacks)
 
     Returns:
         {page_no: merged_structured_data} 字典
@@ -366,6 +368,14 @@ async def merge_pages_data(task_id: str, callback_fn=None) -> Dict[int, Dict[str
             groups[group_key] = []
 
         groups[group_key].append(page_data)
+
+    if prepare_callback_plan_fn:
+        try:
+            maybe_result = prepare_callback_plan_fn(task_id, len(groups))
+            if asyncio.iscoroutine(maybe_result):
+                await maybe_result
+        except Exception as plan_err:
+            logger.error(f"初始化合并回调计划失败: task_id={task_id}, error={plan_err}", exc_info=True)
 
     merged_results = {}
 
