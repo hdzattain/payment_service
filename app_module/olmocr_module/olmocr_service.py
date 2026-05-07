@@ -93,77 +93,55 @@ def _get_thread_session() -> requests.Session:
     if session is None:
         session = requests.Session()
         _session_local.session = session
-        _session_local.authenticated = False
     return session
 
 
-def _set_thread_authenticated(authenticated: bool) -> None:
-    _session_local.authenticated = authenticated
+def _build_olmocr_auth_headers(headers: dict | None = None) -> dict:
+    merged_headers = dict(headers or {})
+    if not OLMOCR_AUTH_ENABLED:
+        return merged_headers
 
+    auth_token = settings.resolved_olmocr_api_token
+    if not auth_token:
+        raise OlmocrAuthConfigurationError(
+            "未配置 API_USERNAME/API_PASS（或兼容的 OLMOCR_AUTH_USERNAME/OLMOCR_AUTH_PASSWORD、AUTH_USERNAME/AUTH_PASSWORD）"
+        )
 
-def _is_thread_authenticated() -> bool:
-    return bool(getattr(_session_local, "authenticated", False))
+    merged_headers.setdefault("Authorization", f"Bearer {auth_token}")
+    merged_headers.setdefault("X-API-Token", auth_token)
+    return merged_headers
 
 
 def _ensure_authenticated_session(force_relogin: bool = False) -> requests.Session:
     session = _get_thread_session()
-
     if not OLMOCR_AUTH_ENABLED:
         return session
 
-    if _is_thread_authenticated() and not force_relogin:
-        return session
-
-    username = settings.resolved_olmocr_auth_username
-    password = settings.resolved_olmocr_auth_password
-    if not username or not password:
+    if not settings.resolved_olmocr_api_token:
         raise OlmocrAuthConfigurationError(
-            "未配置 OLMOCR_AUTH_USERNAME/OLMOCR_AUTH_PASSWORD（或兼容的 AUTH_USERNAME/AUTH_PASSWORD）"
+            "未配置 API_USERNAME/API_PASS（或兼容的 OLMOCR_AUTH_USERNAME/OLMOCR_AUTH_PASSWORD、AUTH_USERNAME/AUTH_PASSWORD）"
         )
 
-    _set_thread_authenticated(False)
     if force_relogin:
-        session.cookies.clear()
-
-    logger.info(
-        f"开始登录 OLMOCR 鉴权会话: login_url={settings.resolved_olmocr_login_url}, username={username}, force_relogin={force_relogin}"
-    )
-    response = session.post(
-        settings.resolved_olmocr_login_url,
-        data={"username": username, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        verify=OLMOCR_VERIFY_SSL,
-        timeout=OLMOCR_LOGIN_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    _set_thread_authenticated(True)
-
-    cookie_names = {cookie.name for cookie in session.cookies}
-    if OLMOCR_SESSION_COOKIE_NAME in cookie_names:
-        logger.info(f"OLMOCR 鉴权登录成功，已获取会话 Cookie: {OLMOCR_SESSION_COOKIE_NAME}")
-    else:
-        logger.warning(
-            f"OLMOCR 登录成功但未检测到预期 Cookie: {OLMOCR_SESSION_COOKIE_NAME}, available_cookies={sorted(cookie_names)}"
-        )
-
+        logger.warning("OLMOCR 已切换为 API Token 认证，忽略会话重登录逻辑")
     return session
 
 
 def _send_olmocr_request(method: str, url: str, retry_on_auth_failure: bool = True, **kwargs) -> requests.Response:
     request_kwargs = dict(kwargs)
     request_kwargs.setdefault("verify", OLMOCR_VERIFY_SSL)
+    request_kwargs["headers"] = _build_olmocr_auth_headers(request_kwargs.get("headers"))
 
     session = _ensure_authenticated_session()
     response = session.request(method=method, url=url, **request_kwargs)
 
     if OLMOCR_AUTH_ENABLED and retry_on_auth_failure and response.status_code in {401, 403}:
         logger.warning(
-            f"OLMOCR 请求鉴权失效，准备重新登录后重试: method={method}, url={url}, status_code={response.status_code}"
+            f"OLMOCR API Token 鉴权失败: method={method}, url={url}, status_code={response.status_code}"
         )
-        session = _ensure_authenticated_session(force_relogin=True)
-        response = session.request(method=method, url=url, **request_kwargs)
 
     return response
+
 
 
 def _wait_for_submit_slot():
