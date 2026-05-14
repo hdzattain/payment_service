@@ -153,7 +153,7 @@ def call_deepseek_api(
         api_key: str | None = None,
         model: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 8192,
         base_url: str | None = None,
         timeout: int | float | None = None,
 ) -> Optional[str]:

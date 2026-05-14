@@ -1,6 +1,7 @@
 import asyncio
 import math
 import os
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Any, List
 
 import PyPDF2
@@ -231,7 +232,7 @@ def detect_ocr_jsonl_page_mapping_mode(ocr_pages: List[dict], start_page: int, e
     page_indexes = sorted(
         entry.get("page")
         for entry in ocr_pages
-        if isinstance(entry.get("page"), int) and entry.get("page") >= 0
+        if isinstance(entry, dict) and isinstance(entry.get("page"), int) and entry.get("page") >= 0
     )
 
     expected_local_indexes = set(range(expected_pages))
@@ -246,6 +247,36 @@ def detect_ocr_jsonl_page_mapping_mode(ocr_pages: List[dict], start_page: int, e
 
     mapping_mode = "local_batch_page_index" if use_local_page_index else "global_document_page_index"
     return mapping_mode, page_indexes
+
+
+def _parse_confidence_value(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+
+    try:
+        return float(Decimal(str(value).strip()))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def extract_confidence_values_from_jsonl_entry(entry: Dict[str, Any] | Any) -> tuple[float | None, float | None]:
+    try:
+        if not isinstance(entry, dict):
+            return None, None
+
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        confidence = _parse_confidence_value(metadata.get("confidence"))
+        heuristic_confidence = _parse_confidence_value(metadata.get("heuristic_confidence"))
+
+        if confidence is None:
+            confidence = _parse_confidence_value(entry.get("confidence"))
+        if heuristic_confidence is None:
+            heuristic_confidence = _parse_confidence_value(entry.get("heuristic_confidence"))
+
+        return confidence, heuristic_confidence
+    except Exception as exc:
+        logger.warning(f"提取JSONL置信度失败，已忽略该字段: error={exc}")
+        return None, None
 
 
 def extract_ocr_page_results_from_jsonl(ocr_pages: List[dict], start_page: int, expected_pages: int) -> List[Dict[str, Any]]:
@@ -269,26 +300,43 @@ def extract_ocr_page_results_from_jsonl(ocr_pages: List[dict], start_page: int, 
     if not ocr_pages:
         logger.warning(f"JSONL页面列表为空, start_page={start_page}, expected_pages={expected_pages}")
         return [
-            {"page": (start_page - 1) + i, "status": "missing", "markdown": "", "error": "JSONL页面结果缺失"}
+            {
+                "page": (start_page - 1) + i,
+                "status": "missing",
+                "markdown": "",
+                "error": "JSONL页面结果缺失",
+                "confidence": None,
+                "heuristic_confidence": None,
+            }
             for i in range(expected_pages)
         ]
 
     page_map: Dict[int, Dict[str, Any]] = {}
-    for entry in ocr_pages:
-        page_idx = entry.get("page", -1)
-        status = str(entry.get("status", "") or "").strip().lower()
-        markdown = (entry.get("markdown", "") or "").strip()
-        error = entry.get("error", "") or ""
+    for index, entry in enumerate(ocr_pages):
+        try:
+            if not isinstance(entry, dict):
+                logger.warning(f"JSONL页面结果格式异常，已跳过: index={index}, entry_type={type(entry).__name__}")
+                continue
 
-        if status and status != "success":
-            logger.warning(f"JSONL页面状态异常: page={page_idx}, status={status}, error={error}")
+            page_idx = entry.get("page", -1)
+            status = str(entry.get("status", "") or "").strip().lower()
+            markdown = (entry.get("markdown", "") or "").strip()
+            error = entry.get("error", "") or ""
+            confidence, heuristic_confidence = extract_confidence_values_from_jsonl_entry(entry)
 
-        page_map[page_idx] = {
-            "page": page_idx,
-            "status": status or "unknown",
-            "markdown": markdown,
-            "error": error,
-        }
+            if status and status != "success":
+                logger.warning(f"JSONL页面状态异常: page={page_idx}, status={status}, error={error}")
+
+            page_map[page_idx] = {
+                "page": page_idx,
+                "status": status or "unknown",
+                "markdown": markdown,
+                "error": error,
+                "confidence": confidence,
+                "heuristic_confidence": heuristic_confidence,
+            }
+        except Exception as exc:
+            logger.warning(f"解析JSONL页面结果失败，已跳过: index={index}, error={exc}")
 
     mapping_mode, page_indexes = detect_ocr_jsonl_page_mapping_mode(ocr_pages, start_page, expected_pages)
     use_local_page_index = mapping_mode == "local_batch_page_index"
@@ -305,6 +353,8 @@ def extract_ocr_page_results_from_jsonl(ocr_pages: List[dict], start_page: int, 
             "status": "missing",
             "markdown": "",
             "error": f"JSONL页面结果缺失({mapping_mode})",
+            "confidence": None,
+            "heuristic_confidence": None,
         }))
 
     return result

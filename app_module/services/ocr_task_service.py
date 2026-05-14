@@ -3,6 +3,7 @@ import json
 import os
 import requests
 import threading
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -15,6 +16,7 @@ from app_module.olmocr_module.olmocr_service import run_ocr_task
 from app_module.rule_engine.extract_order_contact import extract_order_contact_to_dict_list
 from app_module.services.pdf_service import (
     detect_ocr_jsonl_page_mapping_mode,
+    extract_confidence_values_from_jsonl_entry,
     split_pdf_by_batch,
     split_ocr_text_by_page,
     extract_ocr_page_results_from_jsonl,
@@ -52,6 +54,45 @@ config_loader = RuleConfigurationLoader(rule_engine)
 # 从JSON文件加载规则
 config_path = os.path.join('app_module', 'rule_engine', 'config', 'rules_config.json')
 config_loader.load_from_json(config_path)
+
+
+def _is_receipt_detail_text(ocr_text: str) -> bool:
+    text_no_space = (ocr_text or "").replace(" ", "")
+    if ("材料付办单附表－摘要明細" in text_no_space
+            or "材料付辦單附表－摘要明細" in text_no_space
+            or "材料付办单附表-摘要明細" in text_no_space
+            or "材料付辦單附表-摘要明細" in text_no_space
+            or "材料付办单附表－摘要明细" in text_no_space
+            or "材料付辦單附表－摘要明细" in text_no_space
+            or "材料付办单附表-摘要明细" in text_no_space
+            or "材料付辦單附表-摘要明细" in text_no_space
+            or "材料付办单附表摘要明細" in text_no_space
+            or "材料付辦單附表摘要明細" in text_no_space
+            or "材料付办单附表摘要明细" in text_no_space
+            or "材料付辦單附表摘要明细" in text_no_space
+            or "材料付款办理单附表－摘要明细" in text_no_space
+            or "材料付款办理单附表－摘要明細" in text_no_space
+            or "材料付款辦理單附表－摘要明細" in text_no_space
+            or "材料付款辦理單附表－摘要明细" in text_no_space
+            or "材料付款办理单附表-摘要明細" in text_no_space
+            or "材料付款辦理單附表-摘要明細" in text_no_space
+            or "材料付款辦理單附表-摘要明细" in text_no_space
+            or "材料付款办理单附表摘要明细" in text_no_space
+            or "材料付款办理单附表摘要明細" in text_no_space
+            or "材料付款辦理單附表摘要明細" in text_no_space
+            or "材料付款辦理單附表摘要明细" in text_no_space):
+        return True
+    return False
+
+
+def _is_receipts_text(ocr_text: str) -> bool:
+    text = ocr_text or ""
+    if ("物資付款辦理單" in text
+            or "物资付款办理单" in text
+            or "物料付款辦理單" in text
+            or "物料付款办理单" in text):
+        return True
+    return False
 
 
 def get_global_page_ocr_semaphore() -> asyncio.Semaphore:
@@ -140,6 +181,101 @@ def calculate_task_status_from_details(task_details: list[Any], current_status: 
     return current_status if current_status in {0, 1, 2, 3, 4} else 3
 
 
+def _get_field_value(item: Any, field_name: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(field_name)
+    return getattr(item, field_name, None)
+
+
+def _parse_confidence_decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+
+    value_text = str(value).strip()
+    if not value_text:
+        return None
+
+    try:
+        return Decimal(value_text)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _quantize_confidence(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _format_confidence_for_storage(value: Any) -> str | None:
+    quantized = _quantize_confidence(_parse_confidence_decimal(value))
+    return format(quantized, "f") if quantized is not None else None
+
+
+def _format_confidence_for_callback(value: Any) -> float | None:
+    quantized = _quantize_confidence(_parse_confidence_decimal(value))
+    return float(quantized) if quantized is not None else None
+
+
+def _safe_format_confidence_for_storage(value: Any) -> str | None:
+    try:
+        return _format_confidence_for_storage(value)
+    except Exception as exc:
+        logger.warning(f"格式化页级置信度失败，已忽略该字段: error={exc}")
+        return None
+
+
+def _safe_format_confidence_for_callback(value: Any) -> float | None:
+    try:
+        return _format_confidence_for_callback(value)
+    except Exception as exc:
+        logger.warning(f"格式化回调置信度失败，已忽略该字段: error={exc}")
+        return None
+
+
+def _calculate_average_confidence_from_values(values: list[Any]) -> Decimal | None:
+    normalized_values = [_parse_confidence_decimal(value) for value in values]
+    valid_values = [value for value in normalized_values if value is not None]
+    if not valid_values:
+        return None
+
+    average_value = sum(valid_values) / Decimal(len(valid_values))
+    return _quantize_confidence(average_value)
+
+
+def _build_confidence_summary(items: list[Any]) -> dict[str, str | float | None]:
+    confidence_average = _calculate_average_confidence_from_values([
+        _get_field_value(item, "confidence") for item in items
+    ])
+    heuristic_confidence_average = _calculate_average_confidence_from_values([
+        _get_field_value(item, "heuristic_confidence") for item in items
+    ])
+
+    return {
+        "confidence": format(confidence_average, "f") if confidence_average is not None else None,
+        "heuristic_confidence": format(heuristic_confidence_average, "f") if heuristic_confidence_average is not None else None,
+        "confidence_value": float(confidence_average) if confidence_average is not None else None,
+        "heuristic_confidence_value": float(heuristic_confidence_average) if heuristic_confidence_average is not None else None,
+    }
+
+
+def _empty_confidence_summary() -> dict[str, str | float | None]:
+    return {
+        "confidence": None,
+        "heuristic_confidence": None,
+        "confidence_value": None,
+        "heuristic_confidence_value": None,
+    }
+
+
+def _safe_build_confidence_summary(items: list[Any] | None) -> dict[str, str | float | None]:
+    try:
+        return _build_confidence_summary(items or [])
+    except Exception as exc:
+        logger.warning(f"聚合置信度失败，已降级为空值: error={exc}", exc_info=True)
+        return _empty_confidence_summary()
+
+
 async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
     interval_seconds = max(5.0, settings.OCR_TASK_HEARTBEAT_SECONDS)
     try:
@@ -219,9 +355,6 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
             replaced_count = detail_mapper.replace_task_details(task_id, detail_records)
             logger.info(f"任务详情记录已重建: task_id={task_id}, detail_count={replaced_count}")
 
-        if not merge_mode:
-            initialize_task_callback_plan(task_id, total_pages)
-
         # 5. 对每个批次执行 OCR，然后拆分结果按页处理 AI 提取
         logger.info(f"开始OCR识别: task_id={task_id}, total_pages={total_pages}, batches={len(batches)}, split_pages={effective_split_pages}")
 
@@ -233,30 +366,31 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
         ]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 判断是否需要合并
+        logger.info(f"开始任务回调分组处理: task_id={task_id}, merge_mode={merge_mode}")
+        from app_module.services.merge_service import merge_pages_data
+
+        async def _merge_callback(tid: str, page_numbers: int | list[int]):
+            """分组处理完成后的回调包装"""
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(aux_executor, send_callback_message, tid, page_numbers)
+
+        def _prepare_merge_callback_plan(tid: str, total_callbacks: int):
+            initialize_task_callback_plan(tid, total_callbacks)
+
+        merged_data = await merge_pages_data(
+            task_id,
+            callback_fn=_merge_callback,
+            prepare_callback_plan_fn=_prepare_merge_callback_plan,
+            enable_page_merge=merge_mode,
+        )
+
         if merge_mode:
-            # 合并流程：不合并的组立即回调，需要AI合并的组合并完一组回调一组
-            logger.info(f"开始合并处理: task_id={task_id}")
-            from app_module.services.merge_service import merge_pages_data
-
-            async def _merge_callback(tid: str, page_numbers: list):
-                """合并完成后的回调包装"""
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(aux_executor, send_callback_message, tid, page_numbers)
-
-            def _prepare_merge_callback_plan(tid: str, total_callbacks: int):
-                initialize_task_callback_plan(tid, total_callbacks)
-
-            merged_data = await merge_pages_data(
-                task_id,
-                callback_fn=_merge_callback,
-                prepare_callback_plan_fn=_prepare_merge_callback_plan,
-            )
-
             # 更新数据库（不合并的组在 merge_pages_data 内部已写回，这里统一确保一致）
             with SessionLocal() as db:
                 detail_mapper = OcrTaskDetailMapper(db)
                 for page_no, merged in merged_data.items():
+                    if merged is None:
+                        continue
                     update_data = {
                         'structured_data': json.dumps(merged, ensure_ascii=False)
                     }
@@ -268,7 +402,12 @@ async def process_ocr_task_async(task_id: str, file_url: str, merge_mode: bool =
             detail_mapper = OcrTaskDetailMapper(db)
             task_details = detail_mapper.get_task_details_by_task_id(task_id)
             final_status = calculate_task_status_from_details(task_details, current_status=1)
-            update_data = {"status": final_status}
+            confidence_summary = _safe_build_confidence_summary(task_details)
+            update_data = {
+                "status": final_status,
+                "confidence": confidence_summary["confidence"],
+                "heuristic_confidence": confidence_summary["heuristic_confidence"],
+            }
             task_mapper.update_task(task_id, update_data)
 
         logger.info(f"OCR任务处理完成: task_id={task_id}, final_status={final_status}")
@@ -325,12 +464,22 @@ def send_callback_message(task_id, page_number):
                 "foreign_id": task_info.foreign_id,
                 "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime,
                                                                               'isoformat') else str(
-                    task_info.create_datetime), "items": []
+                    task_info.create_datetime),
+                "confidence": _safe_format_confidence_for_callback(getattr(task_info, "confidence", None)),
+                "heuristic_confidence": _safe_format_confidence_for_callback(getattr(task_info, "heuristic_confidence", None)),
+                "items": []
             }
 
             # 查询task_id的全部status和页码信息和document_type
             task_details = detail_mapper.get_task_details_by_task_id(task_id)
             logger.info(f"查询到任务详情数量: {len(task_details) if task_details else 0}")
+            task_confidence_summary = _safe_build_confidence_summary(task_details)
+            callback_data["confidence"] = task_confidence_summary["confidence_value"]
+            callback_data["heuristic_confidence"] = task_confidence_summary["heuristic_confidence_value"]
+
+            detail_by_page = {
+                detail.page_no: detail for detail in task_details if hasattr(detail, "page_no")
+            }
 
             overall_status = calculate_task_status_from_details(task_details, task_info.status)
             callback_slot_registered, is_final_callback, sent_count, planned_total = consume_task_callback_slot(task_id)
@@ -352,12 +501,16 @@ def send_callback_message(task_id, page_number):
                 # 合并模式：page_no为数组格式
                 first_page_no = page_number[0] if page_number else None
                 if first_page_no is not None:
-                    detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
+                    detail_info = detail_by_page.get(first_page_no) or detail_mapper.get_task_detail_by_id(task_id, first_page_no)
+                    selected_details = [detail_by_page[pn] for pn in page_number if pn in detail_by_page]
+                    item_confidence_summary = _safe_build_confidence_summary(selected_details)
 
                     if detail_info:
                         logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
                         items = {
                             "page_no": page_number,
+                            "confidence": item_confidence_summary["confidence_value"],
+                            "heuristic_confidence": item_confidence_summary["heuristic_confidence_value"],
                             "raw": detail_info.structured_data,
                             "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
                                                                                             'isoformat') else str(
@@ -367,12 +520,14 @@ def send_callback_message(task_id, page_number):
             else:
                 # 非合并模式：page_no为单个值
                 if page_number is not None:
-                    detail_info = detail_mapper.get_task_detail_by_id(task_id, page_number)
+                    detail_info = detail_by_page.get(page_number) or detail_mapper.get_task_detail_by_id(task_id, page_number)
 
                     if detail_info:
                         logger.info(f"查询到详情信息: structured_data={detail_info.structured_data}")
                         items = {
                             "page_no": detail_info.page_no,
+                            "confidence": _safe_format_confidence_for_callback(getattr(detail_info, "confidence", None)),
+                            "heuristic_confidence": _safe_format_confidence_for_callback(getattr(detail_info, "heuristic_confidence", None)),
                             "raw": detail_info.structured_data,
                             "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
                                                                                             'isoformat') else str(
@@ -474,17 +629,40 @@ async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.S
 
             # 优先使用 JSONL 逐页结果，保留页级 status / error；兜底使用 PAGE BREAK 分隔
             if ocr_pages:
-                mapping_mode, jsonl_pages = detect_ocr_jsonl_page_mapping_mode(ocr_pages, start_page, page_count)
-                page_results = extract_ocr_page_results_from_jsonl(ocr_pages, start_page, page_count)
-                logger.info(
-                    f"使用JSONL逐页结果拆分: task_id={task_id}, batch={batch_index}, "
-                    f"start_page={start_page}, page_count={page_count}, jsonl_pages={jsonl_pages}, "
-                    f"mapping_mode={mapping_mode}, pages={len(page_results)}"
-                )
+                try:
+                    mapping_mode, jsonl_pages = detect_ocr_jsonl_page_mapping_mode(ocr_pages, start_page, page_count)
+                    page_results = extract_ocr_page_results_from_jsonl(ocr_pages, start_page, page_count)
+                    logger.info(
+                        f"使用JSONL逐页结果拆分: task_id={task_id}, batch={batch_index}, "
+                        f"start_page={start_page}, page_count={page_count}, jsonl_pages={jsonl_pages}, "
+                        f"mapping_mode={mapping_mode}, pages={len(page_results)}"
+                    )
+                except Exception as jsonl_error:
+                    logger.warning(
+                        f"JSONL逐页结果解析失败，降级使用PAGE BREAK兜底: task_id={task_id}, batch={batch_index}, error={jsonl_error}",
+                        exc_info=True,
+                    )
+                    page_texts = split_ocr_text_by_page(full_ocr_text, page_count)
+                    page_results = [
+                        {
+                            "markdown": page_text,
+                            "status": "success",
+                            "error": "",
+                            "confidence": None,
+                            "heuristic_confidence": None,
+                        }
+                        for page_text in page_texts
+                    ]
             else:
                 page_texts = split_ocr_text_by_page(full_ocr_text, page_count)
                 page_results = [
-                    {"markdown": page_text, "status": "success", "error": ""}
+                    {
+                        "markdown": page_text,
+                        "status": "success",
+                        "error": "",
+                        "confidence": None,
+                        "heuristic_confidence": None,
+                    }
                     for page_text in page_texts
                 ]
                 logger.info(
@@ -506,6 +684,8 @@ async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.S
                         merge_mode,
                         page_ocr_status=page_result.get("status", "success"),
                         page_ocr_error=page_result.get("error", ""),
+                        page_confidence=page_result.get("confidence"),
+                        page_heuristic_confidence=page_result.get("heuristic_confidence"),
                     )
                 )
             await asyncio.gather(*extract_tasks, return_exceptions=True)
@@ -523,11 +703,15 @@ async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.S
 async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_task_id: str,
                                  merge_mode: bool = False,
                                  page_ocr_status: str = "success",
-                                 page_ocr_error: str = ""):
+                                 page_ocr_error: str = "",
+                                 page_confidence: Any = None,
+                                 page_heuristic_confidence: Any = None):
     """对单页OCR文本进行AI结构化提取并保存到数据库。"""
     ai_semaphore = get_ai_extract_semaphore()
     async with ai_semaphore:
         try:
+            stored_confidence = _safe_format_confidence_for_storage(page_confidence)
+            stored_heuristic_confidence = _safe_format_confidence_for_storage(page_heuristic_confidence)
             normalized_page_status = str(page_ocr_status or "success").strip().lower()
             if normalized_page_status != "success":
                 error_message = page_ocr_error or f"OCR页识别失败，状态: {normalized_page_status}"
@@ -539,6 +723,8 @@ async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_
                     detail_mapper = OcrTaskDetailMapper(db)
                     detail_mapper.update_task_detail(task_id, page_no, {
                         "ocr_task_id": ocr_task_id,
+                        "confidence": stored_confidence,
+                        "heuristic_confidence": stored_heuristic_confidence,
                         "ocr_text": ocr_text or "",
                         "status": 3,
                         "error_message": error_message,
@@ -551,6 +737,8 @@ async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_
                     detail_mapper = OcrTaskDetailMapper(db)
                     detail_mapper.update_task_detail(task_id, page_no, {
                         "ocr_task_id": ocr_task_id,
+                        "confidence": stored_confidence,
+                        "heuristic_confidence": stored_heuristic_confidence,
                         "ocr_text": "",
                         "status": 3,
                         "error_message": "OCR文本为空"
@@ -573,6 +761,8 @@ async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_
                 detail_mapper = OcrTaskDetailMapper(db)
                 update_data = {
                     "ocr_task_id": ocr_task_id,
+                    "confidence": stored_confidence,
+                    "heuristic_confidence": stored_heuristic_confidence,
                     "ocr_text": ocr_text,
                     "document_type": document_type,
                     "structured_data":
@@ -594,11 +784,6 @@ async def _extract_and_save_page(task_id: str, page_no: int, ocr_text: str, ocr_
             with SessionLocal() as db:
                 detail_mapper = OcrTaskDetailMapper(db)
                 detail_mapper.update_task_detail(task_id, page_no, {"status": 3})
-        finally:
-            if not merge_mode:
-                logger.info(f"发送回调信息: task_id={task_id}, page={page_no}")
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_no)
 
 
 async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):
@@ -610,6 +795,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
     :return: 识别结果或异常
     """
     async with semaphore:
+        should_send_callback = False
         try:
             image_path = page_info["file_path"]
             page_number = page_info["page_number"]
@@ -638,6 +824,9 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
 
             ocr_text = ocr_response.get("ocr_text", "")
             ocr_task_id = ocr_response.get("task_id", "")
+            ocr_pages = ocr_response.get("ocr_pages", [])
+            first_page_entry = ocr_pages[0] if ocr_pages else {}
+            page_confidence, page_heuristic_confidence = extract_confidence_values_from_jsonl_entry(first_page_entry)
             # 从OCR文本提取结构化数据
             structured_response = await loop.run_in_executor(aux_executor, extract_structured_data_from_ocr, ocr_text)
 
@@ -645,6 +834,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             structured_data = structured_response.get("structured_data", None)
             llm_structured_data = structured_response.get("llm_structured_data", None)
             regex_structured_data = structured_response.get("regex_structured_data", None)
+            should_send_callback = (not merge_mode and document_type != "receipt_detail")
 
             # 提取 group_id
             group_id = None
@@ -657,6 +847,8 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 detail_mapper = OcrTaskDetailMapper(db)
                 update_data = {
                     "ocr_task_id": ocr_task_id,
+                    "confidence": _safe_format_confidence_for_storage(page_confidence),
+                    "heuristic_confidence": _safe_format_confidence_for_storage(page_heuristic_confidence),
                     "ocr_text": ocr_text,
                     "document_type": document_type,
                     "structured_data":
@@ -685,16 +877,16 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 }
                 detail_mapper.update_task_detail(task_id, page_info["page_number"], update_data)
         finally:
-            # 只有非合并模式才发送单页回调
-            if not merge_mode:
+            # 只有非合并模式且非 receipt_detail 才发送单页回调
+            if should_send_callback:
                 logger.info(f"發送回調信息: task_id={task_id}, page={page_info['page_number']}")
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_info['page_number'])
 
 
-def extract_receipts_form_data(ocr_text):
+def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
     """使用规则引擎提取物资付款办理单数据"""
-    document_type = "receipts"
+    llm_document_type = document_type
 
     # 初始化结构化数据
     regex_structured_data: dict[str, Any] = {
@@ -703,7 +895,7 @@ def extract_receipts_form_data(ocr_text):
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields("receipts", ocr_text)
 
     # 更新结构化数据
     for field, value in extracted_fields.items():
@@ -714,7 +906,12 @@ def extract_receipts_form_data(ocr_text):
             regex_structured_data[field] = value
 
     logger.info(f'\n提取的结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
-    structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+    structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, llm_document_type)
+
+    if structured_data is not None:
+        structured_data["document_type"] = document_type
+    if llm_data is not None:
+        llm_data["document_type"] = document_type
 
     # # 统一转换日期格式
     # invoice_date = structured_data.get('invoice_date')
@@ -938,6 +1135,23 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'delivery_note_no',
             'remarks'
         ],
+        "receipt_detail": [
+            'document_type',
+            'document_no',
+            'site_name',
+            'material_category',
+            'date',
+            'supplier_name',
+            'contract_no',
+            'invoice_date',
+            'product_service',
+            'currency',
+            'total_amount',
+            'payment_method',
+            'invoice_no',
+            'delivery_note_no',
+            'remarks'
+        ],
         "invoice": [
             'document_type',
             'document_no',
@@ -1054,7 +1268,9 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     text_lower_no_space = text_lower.replace(" ", "")
 
     # 首先判断ocr_text属于哪类票据，然后提取相应字段
-    if "物資付款辦理單" in ocr_text or "物资付款办理单" in ocr_text:
+    if _is_receipt_detail_text(ocr_text):
+        return extract_receipts_form_data(ocr_text, document_type="receipt_detail")
+    elif _is_receipts_text(ocr_text):
         return extract_receipts_form_data(ocr_text)
     elif ("delivery note" in text_lower
           or "送貨簽收單" in ocr_text

@@ -351,7 +351,7 @@ RECEIPTS_PROMPT = """
    - 所有字段名与指定JSON结构**完全一致**（大小写、中英文均不修改）；
    - 非Optional字段无对应信息时填充**空字符串""**，Optional字段（remark）无信息也填充空字符串""；
    - 数值类型约束：quantity 保留数字格式（提取时剥离单位，如100.000個→100.000，无则填0）；；
-   - 数组处理：product_service为**数组类型**，有多少付款项目就提取多少，无则返回空数组[]；
+   - 数组处理：product_service为数组类型，提取【摘要】与【費用類型】两个表格的行项目；忽略金额为0或空、且名称/描述也为空的占位空行，仅提取有实际业务发生的有效行，无则返回空数组[]；
    - 编号/编码类字段：保留原始格式（含/、-、数字/字母），不做任何修改；
 3. 数据来源：**仅从提供的OCR文本提取**，不编造、不猜测、不补充任何信息，字段值与原文完全一致；
 4. 格式统一：
@@ -510,7 +510,238 @@ Print Date: 2023-12-06 13:55
 
 ## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
-  "document_type": "字符串（文件类型，固定为\"receipts\"）",
+  "document_type": "字符串（文件类型，固定为\"receipt_detail\"）",
+  "site_name": "字符串（地盘名称，如未出现则填\"\"）",
+  "material_category": "字符串（材料分类，如未出现则填\"\"）",
+  "date": "字符串（制单日期，如未出现则填\"\"）",
+  "supplier_name": "字符串（供应商名称、客商名称，如未出现则填\"\"）",
+  "document_no": "字符串（付辦單號，如：CDX/2401/A/0001）",
+  "contract_no": "字符串（合约编号，如未出现则填\"\"）",
+  "invoice_date": "字符串（发票日期，如未出现则填\"\"）",
+  "payment_method": "字符串（付款方式，如未出现则填\"\"）",
+  "total_amount": "字符串（合计金额，如：29900.00）",
+  "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
+  "product_service": [
+    {{
+	  "product_service_name": "字符串（摘要表取【材料名稱】列，费用类型表取【費用類型】列）",
+      "product_service_specification": "字符串（摘要表取【規格型號】列，费用类型表取【描述】列）",
+      "product_service_delivery_note_no": "字符串（送货单编号，如：SNT2312-0110）",
+      "product_service_unit": "字符串（计量单位，如：個、項、次）",
+      "product_service_quantity": 數字格式（产品数量，如100、10.12）,
+      "product_service_unit_price": "字符串（单价，如：122.000、160.000）",
+      "product_service_amount": "字符串（金额，如：12200.00、1600.00）"
+    }}
+  ],
+  "invoice_no": "字符串（发票号码，如未出现则填\"\"）",
+  "delivery_note_no": "字符串（送货单号，如未出现则填\"\"）",
+  "remarks": "字符串（备注，如未出现则填\"\"）"
+}}
+
+## 最终输出要求
+仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、可直接转换为对应数据模型。
+"""
+
+RECEIPT_DETAIL_PROMPT = """
+你是专业的建筑行业财务票据结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**材料付办单附表－摘要明細**文本中精准提取所有字段信息。
+
+## 核心提取规则（必须严格遵守）
+1. 输出格式：仅返回合法可解析的JSON字符串，不添加任何解释、备注、换行或额外文字；
+2. 字段要求：
+   - 字段结构与 `receipts` 类型完全一致，但 `document_type` 固定输出为 `receipt_detail`；
+   - 文本中未出现的字段统一填充为空字符串 `""`，数组无数据则返回 `[]`；
+   - `product_service` 为数组，有多少条费用/材料明细就提取多少条；
+   - **禁止漏项**：表格中每一行费用/材料明细都必须输出为一条 `product_service` 记录，不能只提取前几条；
+   - 数量保留数字格式，需剥离单位，如 `10.00項 -> 10.00`、`1.00次 -> 1.00`；
+   - 金额/单价保留数字格式，不保留千分位逗号；
+3. 数据来源：仅从OCR文本提取，不编造、不猜测；
+4. 字段理解要求：
+   - `document_no` 优先提取标题下方单号，如 `CDX/2306/A/0008`；
+   - 若表头为“材料名稱 / 規格型號 / 數量 / 單價 / 金額”，则 `product_service_name -> 材料名稱`，`product_service_specification -> 規格型號`；
+   - 若表头为“費用類型 / 描述 / 數量 / 單價 / 金額”，则 `product_service_name -> 費用類型`，`product_service_specification -> 描述`；
+   - 费用表场景下，**不得**把“描述”错误填入 `product_service_name`；
+   - `product_service_unit` 从数量中的单位提取，如 `項`、`次`；
+   - `total_amount` 提取“合计”；
+   - 若文本中同时存在表格明细与“合计”，`total_amount` 应与全部 `product_service_amount` 汇总一致，不得因漏项导致不一致；
+   - 其他如 `site_name`、`supplier_name`、`invoice_no`、`delivery_note_no` 等若未出现则留空；
+5. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 `HKD`
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 `USA`
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 `CNY`
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 `MOP`
+   - 未出现币种时填空字符串
+
+## 示例案例
+### 输入：
+# 材料付办单附表－摘要明細
+
+# CDX/2306/A/0008
+
+**费用：**
+
+| 費用類型 | 描述 | 數量 | 單價 | 金額 |
+| :--- | :--- | :--- | :--- | :--- |
+| 服務費用 | Calibration of 100mm cube mould | 10.00項 | 160.000 | 1,600.00 |
+| 服務費用 | Calibration of 100mm cube mould with HOKLAS certificate | 40.00項 | 160.000 | 6,400.00 |
+| 服務費用 | Calibration of compacting bar | 1.00項 | 150.000 | 150.00 |
+| 服務費用 | Calibration of compacting bar with HOKLAS certificate | 1.00項 | 150.000 | 150.00 |
+| 服務費用 | Calibration of slump cone | 1.00項 | 450.000 | 450.00 |
+| 服務費用 | Calibration of slump cone set with HOKLAS certificate | 1.00項 | 450.000 | 450.00 |
+| 服務費用 | Calibration of steel ruler | 1.00項 | 420.000 | 420.00 |
+| 服務費用 | Calibration of temperature | 1.00項 | 630.000 | 630.00 |
+| 服務費用 | Temperature distribution & circulation of curing tank | 4.00項 | 1,800.000 | 7,200.00 |
+| 服務費用 | Provision and calibration of thermometer | 5.00項 | 850.000 | 4,250.00 |
+| 服務費用 | Sample collection /return fee | 1.00次 | 500.000 | 500.00 |
+| 服務費用 | Sample collection fee | 1.00次 | 500.000 | 500.00 |
+| 服務費用 | Temperature Distribution & circulation of Curing Tank | 4.00項 | 1,800.000 | 7,200.00 |
+
+- 合计：29,900.00
+
+- Print Date: 2023-06-02 10:25
+- Page: 3
+
+### 输出：
+{{
+  "document_type": "receipt_detail",
+  "site_name": "",
+  "material_category": "",
+  "date": "",
+  "supplier_name": "",
+  "document_no": "CDX/2306/A/0008",
+  "contract_no": "",
+  "invoice_date": "",
+  "payment_method": "",
+  "total_amount": "29900.00",
+  "currency": "",
+  "product_service": [
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of 100mm cube mould",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "10.00",
+      "product_service_unit_price": "160.000",
+      "product_service_amount": "1600.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of 100mm cube mould with HOKLAS certificate",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "40.00",
+      "product_service_unit_price": "160.000",
+      "product_service_amount": "6400.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of compacting bar",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "150.000",
+      "product_service_amount": "150.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of compacting bar with HOKLAS certificate",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "150.000",
+      "product_service_amount": "150.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of slump cone",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "450.000",
+      "product_service_amount": "450.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of slump cone set with HOKLAS certificate",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "450.000",
+      "product_service_amount": "450.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of steel ruler",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "420.000",
+      "product_service_amount": "420.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Calibration of temperature",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "630.000",
+      "product_service_amount": "630.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Temperature distribution & circulation of curing tank",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "4.00",
+      "product_service_unit_price": "1800.000",
+      "product_service_amount": "7200.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Provision and calibration of thermometer",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "5.00",
+      "product_service_unit_price": "850.000",
+      "product_service_amount": "4250.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Sample collection /return fee",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "次",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "500.000",
+      "product_service_amount": "500.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Sample collection fee",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "次",
+      "product_service_quantity": "1.00",
+      "product_service_unit_price": "500.000",
+      "product_service_amount": "500.00"
+    }},
+    {{
+      "product_service_name": "服務費用",
+      "product_service_specification": "Temperature Distribution & circulation of Curing Tank",
+      "product_service_delivery_note_no": "",
+      "product_service_unit": "項",
+      "product_service_quantity": "4.00",
+      "product_service_unit_price": "1800.000",
+      "product_service_amount": "7200.00"
+    }}
+  ],
+  "invoice_no": "",
+  "delivery_note_no": "",
+  "remarks": ""
+}}
+
+## OCR识别的材料付办单附表文本：
+{ocr_text}
+
+## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
+{{
+  "document_type": "字符串（文件类型，固定为\"receipt_detail\"）",
   "site_name": "字符串（地盘名称，如：將軍澳海水化淡廠第一階段(CDX)）",
   "material_category": "字符串（材料分类，如：安全環保用品(U01)）",
   "date": "字符串（制单日期，如：2024-01-02）",
@@ -523,8 +754,8 @@ Print Date: 2023-12-06 13:55
   "currency": "字符串（可选，币种，归一化为：HKD/USA/CNY/MOP，其他按原文，无则填""）",
   "product_service": [
     {{
-      "product_service_name": "字符串（材料名称，如：馬路欄河）",
-      "product_service_specification": "字符串（规格型号，如：XC0302 2M (L)黃色/橙色）",
+      "product_service_name": "字符串（材料名称/费用类型，如：馬路欄河）",
+      "product_service_specification": "字符串（规格型号/描述，如：XC0302 2M (L)黃色/橙色）",
       "product_service_delivery_note_no": "字符串（送货单编号，如：SNT2312-0110）",
       "product_service_unit": "字符串（计量单位，如：個）",
       "product_service_quantity": 數字格式（产品数量，數字格式，如100、10.12）,
@@ -663,7 +894,6 @@ E-mail: wsmetal8@netvigator.com
 ## OCR识别文本：
 {ocr_text}
 
-## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
 ## 必须遵循的JSON结构（字段名、层级、类型完全匹配）：
 {{
   "document_type": "字符串（文件类型，固定为\"delivery_note\"）",
@@ -1142,12 +1372,12 @@ def get_prompt_by_document_type(document_type: str) -> str:
     prompt_mapping = {
         "invoice": INVOICE_PROMPT,
         "receipts": RECEIPTS_PROMPT,
+        "receipt_detail": RECEIPT_DETAIL_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,
         "misc_materials_app": MISC_MATERIALS_APP_PROMPT,
         "transaction": TRANSACTION_RECORD_PROMPT
     }
 
-    print(f"Document type: {document_type}")
 
     # 获取对应的Prompt模板，如果类型不存在则使用发票模板作为默认值
     template = prompt_mapping.get(document_type, INVOICE_PROMPT)

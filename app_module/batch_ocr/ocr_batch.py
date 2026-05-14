@@ -1,13 +1,11 @@
 import argparse
-import os
-import shutil
 from pathlib import Path
 from PyPDF2 import PdfReader, PdfWriter
 import time
-import json
-from olmocr_service import run_ocr_task, LOG_DIR
 import logging
 from datetime import datetime
+
+from app_module.batch_ocr.olmocr_service import run_ocr_task
 
 
 def setup_logging(log_dir: Path):
@@ -90,22 +88,53 @@ def identify_document_type(ocr_text: str) -> str:
     if not ocr_text:
         return "supporting_docs"
 
+    text = ocr_text
+    text_lower = text.lower()
+    text_no_space = text.replace(" ", "")
+
     # 首先判断ocr_text属于哪类票据，然后提取相应字段
-    if "物資付款辦理單" in ocr_text or "物资付款办理单" in ocr_text:
+    if ("材料付办单附表－摘要明細" in text_no_space
+          or "材料付辦單附表－摘要明細" in text_no_space
+          or "材料付办单附表-摘要明細" in text_no_space
+          or "材料付辦單附表-摘要明細" in text_no_space
+          or "材料付办单附表－摘要明细" in text_no_space
+          or "材料付辦單附表－摘要明细" in text_no_space
+          or "材料付办单附表-摘要明细" in text_no_space
+          or "材料付辦單附表-摘要明细" in text_no_space
+          or "材料付办单附表摘要明細" in text_no_space
+          or "材料付辦單附表摘要明細" in text_no_space
+          or "材料付办单附表摘要明细" in text_no_space
+          or "材料付辦單附表摘要明细" in text_no_space
+          or "材料付款办理单附表－摘要明细" in text_no_space
+          or "材料付款办理单附表－摘要明細" in text_no_space
+          or "材料付款辦理單附表－摘要明細" in text_no_space
+          or "材料付款辦理單附表－摘要明细" in text_no_space
+          or "材料付款办理单附表-摘要明細" in text_no_space
+          or "材料付款辦理單附表-摘要明細" in text_no_space
+          or "材料付款辦理單附表-摘要明细" in text_no_space
+          or "材料付款办理单附表摘要明细" in text_no_space
+          or "材料付款办理单附表摘要明細" in text_no_space
+          or "材料付款辦理單附表摘要明細" in text_no_space
+          or "材料付款辦理單附表摘要明细" in text_no_space):
+        return "receipt_detail"
+    elif ("物資付款辦理單" in text
+          or "物资付款办理单" in text
+          or "物料付款辦理單" in text
+          or "物料付款办理单" in text):
         return "receipts"
-    elif ("發invoice票" in ocr_text.lower()
-          or "发invoice票" in ocr_text.lower()
-          or ("invoice" in ocr_text.lower() and "delivery note" not in ocr_text.lower())
-          or "發票" in ocr_text.replace(" ", "")):
+    elif ("發invoice票" in text_lower
+          or "发invoice票" in text_lower
+          or ("invoice" in text_lower and "delivery note" not in text_lower)
+          or "發票" in text_no_space):
         # 这里可以添加发票的提取逻辑
         return "invoice"
-    elif "delivery note" in ocr_text.lower() or "送貨簽收單" in ocr_text or "送貨單" in ocr_text:
+    elif "delivery note" in text_lower or "送貨簽收單" in text or "送貨單" in text:
         # 其他类型票据的提取逻辑
         return "delivery_note"
-    elif "地盤零星材料申請表" in ocr_text or "地盤零星材料" in ocr_text:
+    elif "地盤零星材料申請表" in text or "地盤零星材料" in text:
         # 默认返回空字典
         return "misc_materials_app"
-    elif "交易記錄" in ocr_text or "交易记录" in ocr_text or "Transaction Record" in ocr_text:
+    elif "交易記錄" in text or "交易记录" in text or "Transaction Record" in text:
         return "transaction"
     else:
         # 如果无法识别具体类型，默认为支持文档
