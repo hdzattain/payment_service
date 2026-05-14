@@ -23,6 +23,7 @@ from app_module.services.pdf_service import (
 )
 from app_module.rule_engine.ocr_rule_engine import RuleEngine
 from app_module.rule_engine.rule_config_loader import RuleConfigurationLoader
+from app_module.services.document_type_recognizer import document_type_recognizer
 from app_module.utils.download_utils import download_file_from_url
 from app_module.database.ocr_database import SessionLocal
 from app_module.utils.feishu_utils import ErrorLog, feishu_client
@@ -54,47 +55,6 @@ config_loader = RuleConfigurationLoader(rule_engine)
 # 从JSON文件加载规则
 config_path = os.path.join('app_module', 'rule_engine', 'config', 'rules_config.json')
 config_loader.load_from_json(config_path)
-
-
-def _is_receipt_detail_text(ocr_text: str) -> bool:
-    text_no_space = (ocr_text or "").replace(" ", "")
-    if ("材料付办单附表－摘要明細" in text_no_space
-            or "材料付辦單附表－摘要明細" in text_no_space
-            or "材料付办单附表-摘要明細" in text_no_space
-            or "材料付辦單附表-摘要明細" in text_no_space
-            or "材料付办单附表－摘要明细" in text_no_space
-            or "材料付辦單附表－摘要明细" in text_no_space
-            or "材料付办单附表-摘要明细" in text_no_space
-            or "材料付辦單附表-摘要明细" in text_no_space
-            or "材料付办单附表摘要明細" in text_no_space
-            or "材料付辦單附表摘要明細" in text_no_space
-            or "材料付办单附表摘要明细" in text_no_space
-            or "材料付辦單附表摘要明细" in text_no_space
-            or "材料付款办理单附表－摘要明细" in text_no_space
-            or "材料付款办理单附表－摘要明細" in text_no_space
-            or "材料付款辦理單附表－摘要明細" in text_no_space
-            or "材料付款辦理單附表－摘要明细" in text_no_space
-            or "材料付款办理单附表-摘要明細" in text_no_space
-            or "材料付款辦理單附表-摘要明細" in text_no_space
-            or "材料付款辦理單附表-摘要明细" in text_no_space
-            or "材料付款办理单附表摘要明细" in text_no_space
-            or "材料付款办理单附表摘要明細" in text_no_space
-            or "材料付款辦理單附表摘要明細" in text_no_space
-            or "材料付款辦理單附表摘要明细" in text_no_space):
-        return True
-    return False
-
-
-def _is_receipts_text(ocr_text: str) -> bool:
-    text = ocr_text or ""
-    if ("物資付款辦理單" in text
-            or "物资付款办理单" in text
-            or "物料付款辦理單" in text
-            or "物料付款办理单" in text):
-        return True
-    return False
-
-
 def get_global_page_ocr_semaphore() -> asyncio.Semaphore:
     global _page_ocr_semaphore
     if _page_ocr_semaphore is None:
@@ -1262,58 +1222,27 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
 
     logger.info(f'开始从OCR文本中提取结构化数据: {json.dumps(ocr_text, ensure_ascii=False)}')
 
-    text = ocr_text
-    text_lower = text.lower()
-    text_no_space = text.replace(" ", "")
-    text_lower_no_space = text_lower.replace(" ", "")
+    recognition_result = document_type_recognizer.recognize(ocr_text)
+    document_type = recognition_result.get("document_type")
 
-    # 首先判断ocr_text属于哪类票据，然后提取相应字段
-    if _is_receipt_detail_text(ocr_text):
+    # 先统一做类型识别，再路由到对应提取逻辑，避免重叠关键字被 if/elif 顺序误伤。
+    if document_type == "receipt_detail":
         return extract_receipts_form_data(ocr_text, document_type="receipt_detail")
-    elif _is_receipts_text(ocr_text):
+    elif document_type == "receipts":
         return extract_receipts_form_data(ocr_text)
-    elif ("delivery note" in text_lower
-          or "送貨簽收單" in ocr_text
-          or "送貨單" in ocr_text
-          or "交貨單" in ocr_text
-          or "送货签收单" in ocr_text
-          or "送货单" in ocr_text
-          or "交货单" in ocr_text
-          or "delivery order" in text_lower):
-        # 其他类型票据的提取逻辑
+    elif document_type == "delivery_note":
         return extract_delivery_note_data(ocr_text)
-    elif ("quotation" in text_lower
-          or "報價單" in text
-          or "报价单" in text):
+    elif document_type == "quotation":
         return {}
-    elif ("receipt" in text_lower
-          or "收據" in text
-          or "收据" in text):
+    elif document_type == "receipt":
         return {}
-    elif ("發invoice票" in text_lower_no_space
-          or "发invoice票" in text_lower_no_space
-          or "invoice" in text_lower
-          or "发票" in ocr_text
-          or "發票" in text_no_space):
-        # 这里可以添加发票的提取逻辑
+    elif document_type == "invoice":
         return extract_invoice_form_data(ocr_text)
-    elif ("地盤零星材料申請表" in ocr_text
-        or "地盘零星材料申请表" in ocr_text):
-        # 默认返回空字典
+    elif document_type == "misc_materials_app":
         return extract_misc_materials_data(ocr_text)
-    elif ("轉帳記錄" in ocr_text
-          or "交易記錄" in ocr_text
-          or "交易詳情" in ocr_text
-          or "转账记录" in ocr_text
-          or "交易记录" in ocr_text
-          or "交易详情" in ocr_text
-          or "transaction record" in text_lower
-          or "transaction detail" in text_lower
-          or "igbt" in text_lower
-          or "祈付" in ocr_text
-          or "or order" in text_lower):
+    elif document_type == "transaction":
         return extract_transaction_record_data(ocr_text)
     else:
-        logger.warning("无法识别票据类型，返回空结构化数据")
+        logger.warning(f"无法识别票据类型，返回空结构化数据: recognition={recognition_result}")
         return {}
 
