@@ -1282,6 +1282,14 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
           or "delivery order" in text_lower):
         # 其他类型票据的提取逻辑
         return extract_delivery_note_data(ocr_text)
+    elif ("quotation" in text_lower
+          or "報價單" in text
+          or "报价单" in text):
+        return {}
+    elif ("receipt" in text_lower
+          or "收據" in text
+          or "收据" in text):
+        return {}
     elif ("發invoice票" in text_lower_no_space
           or "发invoice票" in text_lower_no_space
           or "invoice" in text_lower
