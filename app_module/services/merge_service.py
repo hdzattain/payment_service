@@ -170,147 +170,6 @@ def _normalize_group_document_no(value: str | None) -> str:
     return re.sub(r"\s+", "", str(value)).strip()
 
 
-def _canonicalize_table_column(cell: str) -> str:
-    normalized = re.sub(r"\s+", "", str(cell or "").lower())
-    if not normalized:
-        return ""
-    if "description" in normalized or "內容" in normalized or "内容" in normalized:
-        return "description"
-    if "product" in normalized or "產品" in normalized or "产品" in normalized:
-        return "product"
-    if "quantity" in normalized or "數量" in normalized or "数量" in normalized:
-        return "quantity"
-    if "amount" in normalized or "金額" in normalized or "金额" in normalized:
-        return "amount"
-    return ""
-
-
-def _extract_table_column_signatures(ocr_text: str) -> list[tuple[str, ...]]:
-    signatures: list[tuple[str, ...]] = []
-    for line in (ocr_text or "").splitlines():
-        if "|" not in line:
-            continue
-
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2:
-            continue
-
-        # Markdown table alignment rows, for example "| :--- | :--- |".
-        if all(re.fullmatch(r":?-{2,}:?", cell.replace(" ", "")) for cell in cells if cell):
-            continue
-
-        signature = tuple(column for column in (_canonicalize_table_column(cell) for cell in cells) if column)
-        if len(signature) >= 3 and signature not in signatures:
-            signatures.append(signature)
-
-    return signatures
-
-
-def _has_same_table_columns(left_ocr_text: str, right_ocr_text: str) -> bool:
-    left_signatures = _extract_table_column_signatures(left_ocr_text)
-    right_signatures = _extract_table_column_signatures(right_ocr_text)
-    if not left_signatures or not right_signatures:
-        return False
-
-    right_signature_set = set(right_signatures)
-    return any(signature in right_signature_set for signature in left_signatures)
-
-
-def _extract_invoice_total_amount_from_ocr(ocr_text: str) -> str:
-    for line in (ocr_text or "").splitlines():
-        if "total" not in line.lower() and "總計" not in line and "总计" not in line:
-            continue
-
-        numbers = re.findall(r"(?<![\w.])-?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?", line)
-        if numbers:
-            return numbers[-1].replace(",", "")
-
-    return ""
-
-
-def _is_invoice_continuation_candidate(previous_invoice_page: dict, candidate_page: dict) -> bool:
-    candidate_structured_data = candidate_page.get('structured_data') or {}
-    if not isinstance(candidate_structured_data, dict):
-        return False
-
-    candidate_document_type = candidate_structured_data.get('document_type', '')
-    candidate_document_no = _normalize_group_document_no(candidate_structured_data.get('document_no', ''))
-    if candidate_document_no:
-        return False
-
-    if candidate_document_type and candidate_document_type != "invoice":
-        return False
-
-    return _has_same_table_columns(
-        previous_invoice_page.get('ocr_text') or "",
-        candidate_page.get('ocr_text') or "",
-    )
-
-
-def _build_invoice_continuation_structured_data(reference_page: dict, continuation_page: dict) -> dict[str, Any]:
-    reference_structured_data = reference_page.get('structured_data') or {}
-    original_structured_data = continuation_page.get('structured_data') or {}
-    structured_data = _clone_json_data(original_structured_data) if original_structured_data else {}
-
-    structured_data['document_type'] = 'invoice'
-    structured_data['document_no'] = reference_structured_data.get('document_no', '')
-
-    if not isinstance(structured_data.get('product_service'), list):
-        structured_data['product_service'] = []
-    if not isinstance(structured_data.get('order_contact'), list):
-        structured_data['order_contact'] = []
-
-    if is_empty_value(structured_data.get('currency')):
-        structured_data['currency'] = reference_structured_data.get('currency', '')
-    if is_empty_value(structured_data.get('total_amount')):
-        structured_data['total_amount'] = _extract_invoice_total_amount_from_ocr(continuation_page.get('ocr_text') or "")
-
-    return structured_data
-
-
-def _attach_invoice_continuation_pages(pages_data: list[dict]) -> None:
-    page_by_no = {page_data['page_no']: page_data for page_data in pages_data}
-    invoice_pages_by_doc_no: dict[str, list[dict]] = {}
-
-    for page_data in pages_data:
-        structured_data = page_data.get('structured_data') or {}
-        if not isinstance(structured_data, dict):
-            continue
-
-        if structured_data.get('document_type', '') != 'invoice':
-            continue
-
-        document_no = _normalize_group_document_no(structured_data.get('document_no', ''))
-        if not document_no:
-            continue
-
-        invoice_pages_by_doc_no.setdefault(document_no, []).append(page_data)
-
-    attached_pages: set[int] = set()
-    for document_no, invoice_pages in sorted(invoice_pages_by_doc_no.items(), key=lambda item: min(page['page_no'] for page in item[1])):
-        invoice_pages = sorted(invoice_pages, key=lambda item: item['page_no'])
-        if len(invoice_pages) < 2:
-            continue
-
-        last_invoice_page = invoice_pages[-1]
-        candidate_page_no = last_invoice_page['page_no'] + 1
-        candidate_page = page_by_no.get(candidate_page_no)
-        if candidate_page is None or candidate_page_no in attached_pages:
-            continue
-
-        if not _is_invoice_continuation_candidate(last_invoice_page, candidate_page):
-            continue
-
-        candidate_page['structured_data'] = _build_invoice_continuation_structured_data(last_invoice_page, candidate_page)
-        attached_pages.add(candidate_page_no)
-        logger.info(
-            "发票无编号尾页已补挂到上一组: document_no=%s, last_invoice_page=%s, continuation_page=%s",
-            document_no,
-            last_invoice_page['page_no'],
-            candidate_page_no,
-        )
-
-
 def get_first_non_empty_value(pages: list, field_name: str):
     for page_data in pages:
         value = page_data['structured_data'].get(field_name)
@@ -409,8 +268,15 @@ def _write_merged_data_to_pages(task_id: str, page_numbers: list[int], merged_da
         with SessionLocal() as db:
             detail_mapper = OcrTaskDetailMapper(db)
             merged_json = json.dumps(merged_data, ensure_ascii=False)
+            update_data = {'structured_data': merged_json}
+            document_type = merged_data.get('document_type')
+            document_no = merged_data.get('document_no')
+            if document_type:
+                update_data['document_type'] = document_type
+            if document_no:
+                update_data['group_id'] = document_no
             for page_no in page_numbers:
-                detail_mapper.update_task_detail(task_id, page_no, {'structured_data': merged_json})
+                detail_mapper.update_task_detail(task_id, page_no, update_data)
             logger.info(f"合并结果已写回数据库: task_id={task_id}, pages={page_numbers}")
         return True
     except Exception as db_err:
@@ -688,8 +554,6 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             'ocr_text': detail.ocr_text or ''
         })
 
-    if enable_page_merge:
-        _attach_invoice_continuation_pages(pages_data)
 
     consumed_pages: set[int] = set()
     receipt_merge_groups: list[tuple[str, list, list]] = []
