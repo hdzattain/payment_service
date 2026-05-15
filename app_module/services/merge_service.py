@@ -22,6 +22,8 @@ MERGE_JSON_STRUCTURES = {
   "document_no": "字符串",
   "supplier_id": "字符串",
   "supplier_name": "字符串",
+  "supplier_address": "字符串",
+  "supplier_phone": "字符串",
   "site_name": "字符串",
   "invoice_date": "字符串(yyyy-MM-dd)",
   "product_service": [
@@ -263,6 +265,20 @@ def _clone_json_data(data: Any) -> Any:
     return json.loads(json.dumps(data, ensure_ascii=False))
 
 
+def _backfill_invoice_supplier_contact_fields(group_pages: list, merged_data: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not merged_data:
+        return merged_data
+
+    # AI 合并即使成功，也要兜底保留单页已识别出的供应商地址/电话，避免被空值覆盖丢失。
+    for field_name in ("supplier_address", "supplier_phone"):
+        if is_empty_value(merged_data.get(field_name)):
+            fallback_value = get_first_non_empty_value(group_pages, field_name)
+            if not is_empty_value(fallback_value):
+                merged_data[field_name] = fallback_value
+
+    return merged_data
+
+
 def _write_merged_data_to_pages(task_id: str, page_numbers: list[int], merged_data: dict[str, Any]) -> bool:
     try:
         with SessionLocal() as db:
@@ -431,6 +447,8 @@ async def ai_merge_pages(group_pages: list, document_type: str) -> Optional[Dict
         # 修复并解析JSON
         repaired_content = repair_json(response_content)
         merged_data = json.loads(repaired_content)
+        if document_type == "invoice":
+            merged_data = _backfill_invoice_supplier_contact_fields(group_pages, merged_data)
 
         logger.info(f"DeepSeek AI合并成功 | 文档类型: {document_type} | 耗时: {elapsed_time:.2f}秒")
         return merged_data

@@ -1,6 +1,5 @@
-from fastapi import Query
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 
 
 # 產品或服務項目
@@ -20,6 +19,8 @@ class InvoiceResponse(BaseModel):
     document_no: str  # 文件编號
     supplier_id: Optional[str] = ""  # 供應商ID
     supplier_name: str  # 供應商名稱
+    supplier_address: Optional[str] = ""  # 供應商地址
+    supplier_phone: Optional[str] = ""  # 供應商電話
     site_name: str  # 收取人
     invoice_date: str  # 發票日期
     product_service: InvoiceProductServiceItem  # 產品或服務

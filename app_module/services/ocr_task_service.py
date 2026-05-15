@@ -896,6 +896,8 @@ def extract_invoice_form_data(ocr_text):
         "document_type": document_type,
         "supplier_id": "",
         "supplier_name": "",
+        "supplier_address": "",
+        "supplier_phone": "",
         "product_service": [],
         "order_contact": []
     }
@@ -909,10 +911,7 @@ def extract_invoice_form_data(ocr_text):
 
     # 将提取的字段映射到结构化数据
     for field, value in extracted_fields.items():
-        if field == 'supplier_address' or field == 'supplier_phone':
-            # 发票结构中不再输出供应商地址和电话
-            continue
-        elif field == 'product_service' and isinstance(value, list):
+        if field == 'product_service' and isinstance(value, list):
             # 处理产品服务列表格式
             regex_structured_data[field] = value
         elif field == 'order_contact' and isinstance(value, list):
@@ -1117,6 +1116,8 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'document_no',
             'supplier_id',
             'supplier_name',
+            'supplier_address',
+            'supplier_phone',
             'site_name',
             'invoice_date',
             'product_service',

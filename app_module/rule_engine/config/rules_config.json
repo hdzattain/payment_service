@@ -447,12 +447,19 @@
         "rule_type": "regex",
         "patterns": [
           {
+            "value": "^[^\\n\\r]+\\n([^\\n\\r]{6,}?)(?=\\n\\s*(?:TEL(?:\\s*NO\\.?)?|Phone|Contact|TO[:：]?|MESSRS\\.?|發票|INVOICE|Date[:：]?))",
+            "weight": 0.95,
+            "flags": 10
+          },
+          {
             "value": "Client[：:]?\\s*[^\n\r]+\n\\s*Address[：:]?\\s*([^\n\r]+)",
-            "weight": 1.0
+            "weight": 1.0,
+            "flags": 10
           },
           {
             "value": "Address[：:]?\\s*([^\n\r]+)",
-            "weight": 0.9
+            "weight": 0.9,
+            "flags": 10
           }
         ],
         "weight": 1.0,
@@ -464,12 +471,19 @@
         "rule_type": "regex",
         "patterns": [
           {
+            "value": "(?:Contact|Tel(?:\\s*No\\.?)?|Phone)[:：]?\\s*([^\\n\\r]+)",
+            "weight": 0.9,
+            "flags": 2
+          },
+          {
             "value": "Contact[：:]?\\s*([^\n\r]+)",
-            "weight": 0.7
+            "weight": 0.7,
+            "flags": 2
           },
           {
             "value": "Tel[：:]?\\s*([^\n\r]+)",
-            "weight": 0.6
+            "weight": 0.6,
+            "flags": 2
           }
         ],
         "weight": 1.0,

@@ -12,7 +12,7 @@ INVOICE_PROMPT = """
    - 时间字段统一转换为**yyyy-MM-dd HH:mm:ss**格式；
    - 金额/单价值：保留数字格式（含小数点，如12200.00）；
 3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测任何信息；
-4. 嵌套结构：严格按照层级嵌套，product_service对应产品/服务项目；supplier_id、supplier_name为顶层字段。
+4. 嵌套结构：严格按照层级嵌套，product_service对应产品/服务项目；supplier_id、supplier_name、supplier_address、supplier_phone为顶层字段。
 5. 币种归一化规则：
    - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
    - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
@@ -102,6 +102,8 @@ E-mail: wsmetal8@netvigator.com
     "invoice_date": "2023-12-04",
     "supplier_id": "",
     "supplier_name": "永新五金工程有限公司",
+    "supplier_address": "九龍旺角豉油街10號B地下",
+    "supplier_phone": "(852) 2396 7088(5線)",
     "site_name": "中國建築工程(香港)有限公司(海水化淡廠)"
 }}
 
@@ -201,7 +203,9 @@ Certificate No.: CC 1993
     "currency": "HKD",                               
     "total_amount": "1050.00",
     "supplier_id": "",
-    "supplier_name": "海興材料有限公司 Hoi Hing Building Materials Co. Limited"
+    "supplier_name": "海興材料有限公司 Hoi Hing Building Materials Co. Limited",
+    "supplier_address": "新界葵涌貨櫃碼頭路71-75號鐘意恆勝中心3樓306室",
+    "supplier_phone": "2536 2900 | 2388 0263"
 }}
 
 ### 案例 3：
@@ -310,7 +314,9 @@ Certificate No.: CC 1993
     "currency": "HKD",                               
     "total_amount": "",
     "supplier_id": "",
-    "supplier_name": ""
+    "supplier_name": "",
+    "supplier_address": "",
+    "supplier_phone": ""
 }}
 
 
@@ -323,6 +329,8 @@ Certificate No.: CC 1993
   "document_no": "字符串（文件编号，如：发票号码）",
   "supplier_id": "字符串（可选，供应商ID）",
   "supplier_name": "字符串（供应商名称，无则填""）",
+  "supplier_address": "字符串（供应商地址，无则填""）",
+  "supplier_phone": "字符串（供应商电话，无则填""）",
   "site_name": "字符串（收取人）",
   "invoice_date": "字符串（发票日期，格式：YYYY-MM-DD，无则填""）",
   "product_service": {{
