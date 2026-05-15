@@ -1,9 +1,12 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
-from sqlalchemy.sql import func
+from datetime import datetime, UTC
 
 Base = declarative_base()
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class OcrTask(Base):
@@ -23,8 +26,8 @@ class OcrTask(Base):
     heuristic_confidence = Column(String(32), comment='任务平均启发式置信度')
     create_id = Column(String(255), default='1000000000000', comment='创建者id')
     update_id = Column(String(255), default='1000000000000', comment='更新者id')
-    create_datetime = Column(DateTime, default=datetime.utcnow, comment='创建时间')
-    update_datetime = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
+    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
 
 
 class OcrTaskDetail(Base):
@@ -47,5 +50,30 @@ class OcrTaskDetail(Base):
     regex_structured_data = Column(Text, comment='规则匹配结构化提取数据')
     create_id = Column(String(255), default='1000000000000', comment='创建者id')
     update_id = Column(String(255), default='1000000000000', comment='更新者id')
-    create_datetime = Column(DateTime, default=datetime.utcnow, comment='创建时间')
-    update_datetime = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
+    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
+
+
+class OcrTaskCallbackRecord(Base):
+    __tablename__ = 'ocr_task_callback_record'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键id')
+    task_id = Column(String(255), nullable=False, index=True, comment='任务Id')
+    foreign_id = Column(String(255), comment='外部系统Id')
+    callback_url = Column(String(500), comment='回调url')
+    page_no = Column(String(255), comment='回调页码，单页如1，多页如[1,2]')
+    callback_seq = Column(Integer, comment='回调序号')
+    callback_total = Column(Integer, comment='计划回调总数')
+    is_final_callback = Column(SmallInteger, default=0, comment='是否最终回调 0-否 1-是')
+    callback_status = Column(SmallInteger, comment='回调报文状态 0-待执行、1-执行中、2-成功、3-失败、4-部分失败')
+    send_status = Column(SmallInteger, default=0, index=True, comment='发送结果 0-待发送、1-发送成功、2-HTTP失败、3-业务失败、4-发送异常')
+    http_status = Column(Integer, comment='HTTP状态码')
+    business_code = Column(String(64), comment='响应业务码')
+    request_body = Column(Text, comment='回调请求报文JSON')
+    response_body = Column(Text, comment='回调响应内容')
+    error_message = Column(String(1000), comment='失败原因或异常信息')
+    request_datetime = Column(DateTime, comment='请求发起时间')
+    response_datetime = Column(DateTime, comment='请求响应时间')
+    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
+

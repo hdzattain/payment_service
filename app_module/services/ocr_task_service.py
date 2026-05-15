@@ -3,6 +3,7 @@ import json
 import os
 import requests
 import threading
+from datetime import datetime, UTC, timezone, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +11,7 @@ from typing import Any
 
 from app_module.core.config import settings
 from app_module.logger.logger_config import setup_logger
+from app_module.mapper.ocr_task_callback_record_mapper import OcrTaskCallbackRecordMapper
 from app_module.mapper.ocr_task_detail_mapper import OcrTaskDetailMapper
 from app_module.mapper.ocr_task_mapper import OcrTaskMapper
 from app_module.olmocr_module.olmocr_service import run_ocr_task
@@ -43,6 +45,12 @@ _ai_extract_semaphore: asyncio.Semaphore | None = None
 _callback_plan_guard = threading.Lock()
 _task_callback_plans: dict[str, dict[str, int]] = {}
 _task_callback_send_locks: dict[str, threading.Lock] = {}
+CALLBACK_RECORD_PENDING = 0
+CALLBACK_RECORD_SUCCESS = 1
+CALLBACK_RECORD_HTTP_FAILED = 2
+CALLBACK_RECORD_BUSINESS_FAILED = 3
+CALLBACK_RECORD_SEND_EXCEPTION = 4
+CALLBACK_DISPLAY_TIMEZONE = timezone(timedelta(hours=8))
 
 logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS)}, ai_extract_workers={AI_EXTRACT_WORKERS}")
 
@@ -236,6 +244,29 @@ def _safe_build_confidence_summary(items: list[Any] | None) -> dict[str, str | f
         return _empty_confidence_summary()
 
 
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _callback_now_naive() -> datetime:
+    return datetime.now(CALLBACK_DISPLAY_TIMEZONE).replace(tzinfo=None)
+
+
+def _format_callback_datetime(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, datetime):
+        return str(value)
+
+    if value.tzinfo is None:
+        utc_value = value.replace(tzinfo=UTC)
+    else:
+        utc_value = value.astimezone(UTC)
+
+    local_value = utc_value.astimezone(CALLBACK_DISPLAY_TIMEZONE).replace(tzinfo=None)
+    return local_value.isoformat(timespec="seconds")
+
+
 async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
     interval_seconds = max(5.0, settings.OCR_TASK_HEARTBEAT_SECONDS)
     try:
@@ -404,6 +435,7 @@ def send_callback_message(task_id, page_number):
     with callback_lock:
         callback_slot_registered = False
         is_final_callback = False
+        callback_record_data: dict[str, Any] | None = None
 
         with SessionLocal() as db:
             task_mapper = OcrTaskMapper(db)
@@ -422,9 +454,7 @@ def send_callback_message(task_id, page_number):
                 "task_id": task_info.task_id,
                 "status": task_info.status,
                 "foreign_id": task_info.foreign_id,
-                "create_at": task_info.create_datetime.isoformat() if hasattr(task_info.create_datetime,
-                                                                              'isoformat') else str(
-                    task_info.create_datetime),
+                "create_at": _format_callback_datetime(getattr(task_info, "create_datetime", None)),
                 "confidence": _safe_format_confidence_for_callback(getattr(task_info, "confidence", None)),
                 "heuristic_confidence": _safe_format_confidence_for_callback(getattr(task_info, "heuristic_confidence", None)),
                 "items": []
@@ -472,9 +502,7 @@ def send_callback_message(task_id, page_number):
                             "confidence": item_confidence_summary["confidence_value"],
                             "heuristic_confidence": item_confidence_summary["heuristic_confidence_value"],
                             "raw": detail_info.structured_data,
-                            "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
-                                                                                            'isoformat') else str(
-                                detail_info.create_datetime)}
+                            "create_at": _format_callback_datetime(getattr(detail_info, "create_datetime", None))}
 
                         callback_data["items"] = items
             else:
@@ -489,15 +517,27 @@ def send_callback_message(task_id, page_number):
                             "confidence": _safe_format_confidence_for_callback(getattr(detail_info, "confidence", None)),
                             "heuristic_confidence": _safe_format_confidence_for_callback(getattr(detail_info, "heuristic_confidence", None)),
                             "raw": detail_info.structured_data,
-                            "create_at": detail_info.create_datetime.isoformat() if hasattr(detail_info.create_datetime,
-                                                                                            'isoformat') else str(
-                                detail_info.create_datetime)}
+                            "create_at": _format_callback_datetime(getattr(detail_info, "create_datetime", None))}
 
                         callback_data["items"] = items
             callback_url = task_info.callback_url
             logger.info(f"回调URL: {callback_url}")  # 新增日志
-            logger.info(f"==========回调请求参数: {json.dumps(callback_data, ensure_ascii=False)}")
+            request_body = json.dumps(callback_data, ensure_ascii=False)
+            callback_record_data = {
+                "task_id": task_info.task_id,
+                "foreign_id": task_info.foreign_id,
+                "callback_url": callback_url,
+                "page_no": _serialize_callback_page_number(page_number),
+                "callback_seq": callback_data.get("callback_seq"),
+                "callback_total": callback_data.get("callback_total"),
+                "is_final_callback": 1 if callback_data.get("is_final_callback") else 0,
+                "callback_status": callback_data.get("status"),
+                "send_status": CALLBACK_RECORD_PENDING,
+                "request_body": request_body,
+            }
+            logger.info(f"==========回调请求参数: {request_body}")
             try:
+                callback_record_data["request_datetime"] = _callback_now_naive()
                 response = requests.post(
                     callback_url,
                     json=callback_data,
@@ -505,6 +545,9 @@ def send_callback_message(task_id, page_number):
                     timeout=30
                 )
 
+                callback_record_data["http_status"] = response.status_code
+                callback_record_data["response_body"] = response.text
+                callback_record_data["response_datetime"] = _callback_now_naive()
                 logger.info(f"========回调请求响应信息: task_id={task_id}, http_status={response.status_code}")
 
                 try:
@@ -513,16 +556,28 @@ def send_callback_message(task_id, page_number):
 
                     # 获取业务状态码，提供默认值以防止KeyError
                     business_code = response_json.get('result', -1)
+                    callback_record_data["business_code"] = str(business_code) if business_code is not None else None
 
                     # 同时检查HTTP状态码和业务状态码
                     if response.status_code == 200 and business_code == 0:
+                        callback_record_data["send_status"] = CALLBACK_RECORD_SUCCESS
                         logger.info(
                             f"回调请求发送成功: task_id={task_id}, http_status={response.status_code}, business_code={business_code}")
                     else:
+                        callback_record_data["send_status"] = (
+                            CALLBACK_RECORD_HTTP_FAILED if response.status_code != 200 else CALLBACK_RECORD_BUSINESS_FAILED
+                        )
+                        callback_record_data["error_message"] = (
+                            f"回调请求部分失败: http_status={response.status_code}, business_code={business_code}"
+                        )
                         logger.error(
                             f"回调请求部分失败: task_id={task_id}, http_status={response.status_code}, business_code={business_code}, response={response.text}")
 
                 except ValueError:
+                    callback_record_data["send_status"] = (
+                        CALLBACK_RECORD_SUCCESS if response.status_code == 200 else CALLBACK_RECORD_HTTP_FAILED
+                    )
+                    callback_record_data["error_message"] = "响应不是JSON格式"
                     logger.warning(
                         f"响应不是JSON格式: task_id={task_id}, status_code={response.status_code}, response={response.text}")
 
@@ -533,10 +588,40 @@ def send_callback_message(task_id, page_number):
                             f"回调请求HTTP失败: task_id={task_id}, status_code={response.status_code}, response={response.text}")
 
             except Exception as e:
+                if callback_record_data is not None:
+                    callback_record_data["send_status"] = CALLBACK_RECORD_SEND_EXCEPTION
+                    callback_record_data["error_message"] = str(e)
+                    callback_record_data["response_datetime"] = _callback_now_naive()
                 logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
             finally:
+                if callback_record_data:
+                    _persist_callback_record_safely(callback_record_data)
                 if callback_slot_registered and is_final_callback:
                     clear_task_callback_plan(task_id)
+
+
+def _serialize_callback_page_number(page_number: int | list[int] | None) -> str | None:
+    if page_number is None:
+        return None
+    if isinstance(page_number, list):
+        return json.dumps(page_number, ensure_ascii=False)
+    return str(page_number)
+
+
+def _persist_callback_record_safely(callback_record_data: dict[str, Any]) -> None:
+    try:
+        callback_record_data = dict(callback_record_data)
+        record_now = callback_record_data.get("response_datetime") or callback_record_data.get("request_datetime") or _callback_now_naive()
+        callback_record_data.setdefault("create_datetime", record_now)
+        callback_record_data.setdefault("update_datetime", record_now)
+        with SessionLocal() as db:
+            callback_record_mapper = OcrTaskCallbackRecordMapper(db)
+            callback_record_mapper.create_callback_record(callback_record_data)
+    except Exception as persist_error:
+        logger.warning(
+            f"回调记录入库失败，已忽略，不影响主流程: task_id={callback_record_data.get('task_id')}, error={persist_error}",
+            exc_info=True,
+        )
 
 
 async def process_batch_ocr(task_id: str, batch_info: dict, semaphore: asyncio.Semaphore, merge_mode: bool = False):
