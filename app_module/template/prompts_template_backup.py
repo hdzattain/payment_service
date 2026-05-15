@@ -617,7 +617,9 @@ to be Continued
   "document_type": "delivery_note",
   "document_no": "D23/005012",
   "supplier_id": "",
-  "supplier_name": "",
+  "supplier_name": "永新五金工程有限公司 WING SUN METAL & ENGINEERING CO. LTD.",
+  "supplier_address": "九龍旺角豉油街10號B地下",
+  "supplier_phone": "2396 7088 (5線)",
   "site_name": "將軍澳海水化淡廠",
   "delivery_date": "2023-12-04",
   "product_service": [
@@ -670,6 +672,8 @@ to be Continued
   "document_no": "字符串（送貨單編號，如：D22-72035）",
   "supplier_id": "字符串（供應商ID，如：未提供則留空）",
   "supplier_name": "字符串（供應商名稱，如：民光電器行 MAN KWONG ELECTRIC CO.）",
+  "supplier_address": "字符串（供應商地址，如：九龍旺角豉油街10號B地下，未提供則留空）",
+  "supplier_phone": "字符串（供應商電話，如：2396 7088，未提供則留空）",
   "site_name": "字符串（送貨單收取人，如：中國建築工程(香港)有限公司(1511052-05)CDX 將軍澳海水化淡廠第一期(施工)）",
   "delivery_date": "字符串（送貨單日期，如：30/11/2022）",
   "product_service": [

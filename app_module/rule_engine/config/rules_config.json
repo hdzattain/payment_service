@@ -325,6 +325,44 @@
         "confidence_threshold": 0.7
       }
     ],
+    "supplier_address": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "^[^\\n\\r]+\\n([^\\n\\r]{6,}?)(?=\\n\\s*(?:TEL(?:\\s*NO\\.?)?|Phone|E-mail|Email|##\\s*Delivery\\s+Note|Delivery\\s+Note|ID\\s*[：:]|Customer|Client|To[：:]?))",
+            "weight": 0.95,
+            "flags": 10
+          },
+          {
+            "value": "Address[：:]?\\s*([^\\n\\r]+)",
+            "weight": 0.9,
+            "flags": 10
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
+    "supplier_phone": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:TEL(?:\\s*NO\\.?)?|Phone)[：:]?\\s*([^\\n\\r]+)",
+            "weight": 0.9,
+            "flags": 2
+          },
+          {
+            "value": "電話[：:]?\\s*([^\\n\\r]+)",
+            "weight": 0.8,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.7
+      }
+    ],
     "site_name": [
       {
         "rule_type": "regex",

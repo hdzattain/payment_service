@@ -1,4 +1,3 @@
-from fastapi import Query
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -19,6 +18,8 @@ class DeliveryNoteResponse(BaseModel):
     document_no: str  # 送貨單編號
     supplier_id: Optional[str] = ""  # 供應商ID
     supplier_name: str  # 供應商名稱
+    supplier_address: Optional[str] = ""  # 供應商地址
+    supplier_phone: Optional[str] = ""  # 供應商電話
     site_name: str  # 送貨單收取人
     delivery_date: str  # 送貨單日期
     product_service: List[DeliveryProductServiceItem]  # 產品或服務

@@ -942,6 +942,10 @@ def extract_delivery_note_data(ocr_text):
     # 初始化结构化数据
     regex_structured_data: dict[str, Any] = {
         "document_type": document_type,
+        "supplier_id": "",
+        "supplier_name": "",
+        "supplier_address": "",
+        "supplier_phone": "",
         "product_service": [],
         "order_contact": []
     }
@@ -960,8 +964,12 @@ def extract_delivery_note_data(ocr_text):
             supplier_info: dict[str, Any] = value
             supplier_id = str(supplier_info.get('supplier_id') or '')
             supplier_name = str(supplier_info.get('supplier_name') or '')
+            supplier_address = str(supplier_info.get('supplier_address') or supplier_info.get('address') or '')
+            supplier_phone = str(supplier_info.get('supplier_phone') or supplier_info.get('phone') or '')
             regex_structured_data['supplier_id'] = supplier_id
             regex_structured_data['supplier_name'] = supplier_name
+            regex_structured_data['supplier_address'] = supplier_address
+            regex_structured_data['supplier_phone'] = supplier_phone
         elif field == 'product_service' and isinstance(value, list):
             # 处理产品服务列表格式
             regex_structured_data[field] = value
@@ -1129,6 +1137,8 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'document_no',
             'supplier_id',
             'supplier_name',
+            'supplier_address',
+            'supplier_phone',
             'site_name',
             'delivery_date',
             'product_service',
