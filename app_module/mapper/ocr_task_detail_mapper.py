@@ -1,9 +1,9 @@
-from datetime import datetime
 from functools import wraps
 
 from sqlalchemy.orm import Session
 
 from app_module.domain.po.ocr_models import OcrTaskDetail
+from app_module.utils.datetime_utils import normalize_db_datetime_values, now_db_naive
 
 
 def transactional(func):
@@ -37,15 +37,17 @@ class OcrTaskDetailMapper:
     @transactional
     def create_task_detail(self, task_detail_data: dict) -> OcrTaskDetail:
         """创建任务详情记录"""
+        task_detail_data = normalize_db_datetime_values(task_detail_data)
         db_task_detail = OcrTaskDetail(**task_detail_data)
         self.db.add(db_task_detail)
+        self.db.flush()
         self.db.refresh(db_task_detail)
         return db_task_detail
 
     @transactional
     def batch_create_task_details(self, task_details: list) -> list:
         """批量创建任务详情记录"""
-        db_task_details = [OcrTaskDetail(**task_detail) for task_detail in task_details]
+        db_task_details = [OcrTaskDetail(**normalize_db_datetime_values(task_detail)) for task_detail in task_details]
         self.db.bulk_save_objects(db_task_details)
         return db_task_details
 
@@ -57,7 +59,7 @@ class OcrTaskDetailMapper:
         if not task_details:
             return 0
 
-        db_task_details = [OcrTaskDetail(**task_detail) for task_detail in task_details]
+        db_task_details = [OcrTaskDetail(**normalize_db_datetime_values(task_detail)) for task_detail in task_details]
         self.db.bulk_save_objects(db_task_details)
         return len(db_task_details)
 
@@ -67,8 +69,8 @@ class OcrTaskDetailMapper:
     @transactional
     def update_task_detail(self, task_id: str, page_no: int, update_data: dict) -> int:
         """更新任务详情信息"""
-        update_data = _sanitize_task_detail_update_data(update_data)
-        update_data['update_datetime'] = datetime.utcnow()
+        update_data = normalize_db_datetime_values(_sanitize_task_detail_update_data(update_data))
+        update_data['update_datetime'] = now_db_naive()
         rows_affected = self.db.query(OcrTaskDetail).filter(
             OcrTaskDetail.task_id == task_id,
             OcrTaskDetail.page_no == page_no
@@ -79,7 +81,8 @@ class OcrTaskDetailMapper:
     def update_task_detail_status(self, task_id: str, page_no: int, status: int) -> int:
         """更新任务详情状态"""
         update_data = {
-            'status': status
+            'status': status,
+            'update_datetime': now_db_naive(),
         }
         rows_affected = self.db.query(OcrTaskDetail).filter(
             OcrTaskDetail.task_id == task_id,
@@ -90,8 +93,13 @@ class OcrTaskDetailMapper:
     @transactional
     def batch_update_task_details(self, updates: list) -> int:
         """批量更新任务详情"""
-        rows_affected = self.db.bulk_update_mappings(OcrTaskDetail, updates)
-        return rows_affected
+        normalized_updates = []
+        for update in updates:
+            normalized_update = normalize_db_datetime_values(dict(update))
+            normalized_update.setdefault('update_datetime', now_db_naive())
+            normalized_updates.append(normalized_update)
+        self.db.bulk_update_mappings(OcrTaskDetail.__mapper__, normalized_updates)
+        return len(normalized_updates)
 
     #
     # 查询操作

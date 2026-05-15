@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import datetime
 from functools import wraps
 from typing import cast
 
@@ -6,10 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app_module.domain.po.ocr_models import OcrTask
-
-
-def utcnow_naive() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+from app_module.utils.datetime_utils import normalize_db_datetime_values, now_db_naive
 
 
 def _sanitize_task_update_data(update_data: dict) -> dict:
@@ -43,6 +40,7 @@ class OcrTaskMapper:
     @transactional
     def create_task(self, task_data: dict) -> OcrTask:
         """创建任务记录"""
+        task_data = normalize_db_datetime_values(task_data)
         db_task = OcrTask(**task_data)
         self.db.add(db_task)
         self.db.flush()
@@ -52,7 +50,7 @@ class OcrTaskMapper:
     @transactional
     def batch_create_tasks(self, tasks: list) -> list:
         """批量创建任务"""
-        db_tasks = [OcrTask(**task) for task in tasks]
+        db_tasks = [OcrTask(**normalize_db_datetime_values(task)) for task in tasks]
         self.db.bulk_save_objects(db_tasks)
         return db_tasks
 
@@ -62,8 +60,8 @@ class OcrTaskMapper:
     @transactional
     def update_task(self, task_id: str, update_data: dict) -> int:
         """更新任务信息"""
-        update_data = _sanitize_task_update_data(update_data)
-        update_data['update_datetime'] = utcnow_naive()
+        update_data = normalize_db_datetime_values(_sanitize_task_update_data(update_data))
+        update_data['update_datetime'] = now_db_naive()
         rows_affected = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).update(update_data)
         return rows_affected
 
@@ -71,7 +69,8 @@ class OcrTaskMapper:
     def update_task_status(self, task_id: str, status: int) -> int:
         """更新任务状态"""
         update_data = {
-            'status': status
+            'status': status,
+            'update_datetime': now_db_naive(),
         }
         rows_affected = self.db.query(OcrTask).filter(OcrTask.task_id == task_id).update(update_data)
         return rows_affected
@@ -79,7 +78,12 @@ class OcrTaskMapper:
     @transactional
     def batch_update_tasks(self, updates: list) -> None:
         """批量更新任务"""
-        self.db.bulk_update_mappings(OcrTask.__mapper__, updates)
+        normalized_updates = []
+        for update in updates:
+            normalized_update = normalize_db_datetime_values(dict(update))
+            normalized_update.setdefault('update_datetime', now_db_naive())
+            normalized_updates.append(normalized_update)
+        self.db.bulk_update_mappings(OcrTask.__mapper__, normalized_updates)
 
     #
     # 查询操作
@@ -139,7 +143,7 @@ class OcrTaskMapper:
                 .filter(OcrTask.task_id == task_id, OcrTask.status == 0)
                 .update({
                     "status": 1,
-                    "update_datetime": utcnow_naive(),
+                    "update_datetime": now_db_naive(),
                 })
             )
             if rows_affected:
@@ -154,7 +158,7 @@ class OcrTaskMapper:
         rows_affected = (
             self.db.query(OcrTask)
             .filter(OcrTask.task_id == task_id, OcrTask.status == 1)
-            .update({"update_datetime": utcnow_naive()})
+            .update({"update_datetime": now_db_naive()})
         )
         self.db.commit()
         return rows_affected > 0
@@ -166,7 +170,7 @@ class OcrTaskMapper:
             .filter(OcrTask.status == 1, OcrTask.update_datetime < stale_before)
             .update({
                 "status": 0,
-                "update_datetime": utcnow_naive(),
+                "update_datetime": now_db_naive(),
             }, synchronize_session=False)
         )
         self.db.commit()

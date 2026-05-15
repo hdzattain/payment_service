@@ -3,7 +3,6 @@ import json
 import os
 import requests
 import threading
-from datetime import datetime, UTC, timezone, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from concurrent.futures import ThreadPoolExecutor
@@ -30,6 +29,7 @@ from app_module.utils.download_utils import download_file_from_url
 from app_module.database.ocr_database import SessionLocal
 from app_module.utils.feishu_utils import ErrorLog, feishu_client
 from app_module.utils.llm_utils import extract_data_with_llm
+from app_module.utils.datetime_utils import format_db_datetime, now_db_naive
 from app_module.utils.paths_utils import build_storage_paths
 
 # 初始化日志记录器
@@ -50,7 +50,6 @@ CALLBACK_RECORD_SUCCESS = 1
 CALLBACK_RECORD_HTTP_FAILED = 2
 CALLBACK_RECORD_BUSINESS_FAILED = 3
 CALLBACK_RECORD_SEND_EXCEPTION = 4
-CALLBACK_DISPLAY_TIMEZONE = timezone(timedelta(hours=8))
 
 logger.info(f"OCR线程池已初始化: ocr_max_workers={MAX_WORKERS}, aux_workers={max(OCR_AUX_WORKERS, AI_EXTRACT_WORKERS)}, ai_extract_workers={AI_EXTRACT_WORKERS}")
 
@@ -244,27 +243,8 @@ def _safe_build_confidence_summary(items: list[Any] | None) -> dict[str, str | f
         return _empty_confidence_summary()
 
 
-def _utcnow_naive() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-
-def _callback_now_naive() -> datetime:
-    return datetime.now(CALLBACK_DISPLAY_TIMEZONE).replace(tzinfo=None)
-
-
 def _format_callback_datetime(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, datetime):
-        return str(value)
-
-    if value.tzinfo is None:
-        utc_value = value.replace(tzinfo=UTC)
-    else:
-        utc_value = value.astimezone(UTC)
-
-    local_value = utc_value.astimezone(CALLBACK_DISPLAY_TIMEZONE).replace(tzinfo=None)
-    return local_value.isoformat(timespec="seconds")
+    return format_db_datetime(value)
 
 
 async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
@@ -537,7 +517,7 @@ def send_callback_message(task_id, page_number):
             }
             logger.info(f"==========回调请求参数: {request_body}")
             try:
-                callback_record_data["request_datetime"] = _callback_now_naive()
+                callback_record_data["request_datetime"] = now_db_naive()
                 response = requests.post(
                     callback_url,
                     json=callback_data,
@@ -547,7 +527,7 @@ def send_callback_message(task_id, page_number):
 
                 callback_record_data["http_status"] = response.status_code
                 callback_record_data["response_body"] = response.text
-                callback_record_data["response_datetime"] = _callback_now_naive()
+                callback_record_data["response_datetime"] = now_db_naive()
                 logger.info(f"========回调请求响应信息: task_id={task_id}, http_status={response.status_code}")
 
                 try:
@@ -591,7 +571,7 @@ def send_callback_message(task_id, page_number):
                 if callback_record_data is not None:
                     callback_record_data["send_status"] = CALLBACK_RECORD_SEND_EXCEPTION
                     callback_record_data["error_message"] = str(e)
-                    callback_record_data["response_datetime"] = _callback_now_naive()
+                    callback_record_data["response_datetime"] = now_db_naive()
                 logger.error(f"发送回调请求异常: task_id={task_id}, error={str(e)}")
             finally:
                 if callback_record_data:
@@ -611,7 +591,7 @@ def _serialize_callback_page_number(page_number: int | list[int] | None) -> str 
 def _persist_callback_record_safely(callback_record_data: dict[str, Any]) -> None:
     try:
         callback_record_data = dict(callback_record_data)
-        record_now = callback_record_data.get("response_datetime") or callback_record_data.get("request_datetime") or _callback_now_naive()
+        record_now = callback_record_data.get("response_datetime") or callback_record_data.get("request_datetime") or now_db_naive()
         callback_record_data.setdefault("create_datetime", record_now)
         callback_record_data.setdefault("update_datetime", record_now)
         with SessionLocal() as db:

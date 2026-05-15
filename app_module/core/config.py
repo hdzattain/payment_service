@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 9000
     ENVIRONMENT: str = "development"
+    APP_TIMEZONE_OFFSET_HOURS: int = 8
 
     # 鉴权配置
     SECRET_KEY: str

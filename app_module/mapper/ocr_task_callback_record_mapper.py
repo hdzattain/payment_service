@@ -4,6 +4,7 @@ from typing import cast
 from sqlalchemy.orm import Session
 
 from app_module.domain.po.ocr_models import OcrTaskCallbackRecord
+from app_module.utils.datetime_utils import normalize_db_datetime_values
 
 
 def transactional(func):
@@ -29,6 +30,7 @@ class OcrTaskCallbackRecordMapper:
     @transactional
     def create_callback_record(self, callback_record_data: dict) -> OcrTaskCallbackRecord:
         """创建回调记录"""
+        callback_record_data = normalize_db_datetime_values(callback_record_data)
         db_record = OcrTaskCallbackRecord(**callback_record_data)
         self.db.add(db_record)
         self.db.flush()
@@ -43,6 +45,6 @@ class OcrTaskCallbackRecordMapper:
             .order_by(OcrTaskCallbackRecord.id.asc())
             .all()
         )
-        return cast(list[OcrTaskCallbackRecord], records)
+        return cast(list[OcrTaskCallbackRecord], cast(object, records))
 
 

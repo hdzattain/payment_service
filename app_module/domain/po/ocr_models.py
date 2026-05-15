@@ -1,12 +1,9 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, SmallInteger
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime, UTC
+
+from app_module.utils.datetime_utils import now_db_naive
 
 Base = declarative_base()
-
-
-def utcnow_naive() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class OcrTask(Base):
@@ -26,8 +23,8 @@ class OcrTask(Base):
     heuristic_confidence = Column(String(32), comment='任务平均启发式置信度')
     create_id = Column(String(255), default='1000000000000', comment='创建者id')
     update_id = Column(String(255), default='1000000000000', comment='更新者id')
-    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
-    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
+    create_datetime = Column(DateTime, default=now_db_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=now_db_naive, onupdate=now_db_naive, comment='更新时间')
 
 
 class OcrTaskDetail(Base):
@@ -50,8 +47,8 @@ class OcrTaskDetail(Base):
     regex_structured_data = Column(Text, comment='规则匹配结构化提取数据')
     create_id = Column(String(255), default='1000000000000', comment='创建者id')
     update_id = Column(String(255), default='1000000000000', comment='更新者id')
-    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
-    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
+    create_datetime = Column(DateTime, default=now_db_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=now_db_naive, onupdate=now_db_naive, comment='更新时间')
 
 
 class OcrTaskCallbackRecord(Base):
@@ -74,6 +71,6 @@ class OcrTaskCallbackRecord(Base):
     error_message = Column(String(1000), comment='失败原因或异常信息')
     request_datetime = Column(DateTime, comment='请求发起时间')
     response_datetime = Column(DateTime, comment='请求响应时间')
-    create_datetime = Column(DateTime, default=utcnow_naive, comment='创建时间')
-    update_datetime = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, comment='更新时间')
+    create_datetime = Column(DateTime, default=now_db_naive, comment='创建时间')
+    update_datetime = Column(DateTime, default=now_db_naive, onupdate=now_db_naive, comment='更新时间')
 
