@@ -437,6 +437,105 @@
       }
     ]
   },
+  "quotation": {
+    "document_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Quotation\\s+No\\.?\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.95
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "quotation_date": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Quotation\\s+Date\\.?\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.95
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "customer_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Messrs?\\.?\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.9,
+            "flags": 2
+          },
+          {
+            "value": "Messers\\.?\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.9,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "project_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "Site/Project\\s*[：:]\\s*([^\\n\\r]+(?:\\n[^\\n\\r]+)?)",
+            "weight": 0.9,
+            "flags": 2
+          },
+          {
+            "value": "Site\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.8,
+            "flags": 2
+          },
+          {
+            "value": "Project\\s*[：:]\\s*([^\\n\\r]+)",
+            "weight": 0.8,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "total_amount": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:Total|Net\\s+Amount)\\s*[：:]?\\s*(?:HK\\$|HKD|USD|CNY|RMB|MOP)?\\s*([0-9,]+(?:\\.[0-9]+)?)",
+            "weight": 0.85,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:Total|Net\\s+Amount)\\s*[：:]?\\s*(HK\\$|HKD|USD|CNY|RMB|MOP)",
+            "weight": 0.85,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ]
+  },
   "invoice": {
     "document_no": [
       {

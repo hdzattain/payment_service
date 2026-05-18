@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     LLM_MERGE_MODEL: str = "deepseek-v3.2"
     LLM_EMBEDDING_MODEL: str = "deepseek-reasoner"
     LLM_TIMEOUT_SECONDS: int = 60
+    LLM_MAX_RETRIES: int = 2
     # 兼容旧配置名，优先使用 LLM_API_KEY
     CSCI_DEEPSEEK_API_KEY: str | None = None
 

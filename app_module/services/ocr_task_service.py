@@ -29,7 +29,7 @@ from app_module.utils.download_utils import download_file_from_url
 from app_module.database.ocr_database import SessionLocal
 from app_module.utils.feishu_utils import ErrorLog, feishu_client
 from app_module.utils.llm_utils import extract_data_with_llm
-from app_module.utils.datetime_utils import format_db_datetime, now_db_naive
+from app_module.utils.datetime_utils import format_db_datetime, now_db_naive, normalize_quotation_date
 from app_module.utils.paths_utils import build_storage_paths
 
 # 初始化日志记录器
@@ -245,6 +245,42 @@ def _safe_build_confidence_summary(items: list[Any] | None) -> dict[str, str | f
 
 def _format_callback_datetime(value: Any) -> str | None:
     return format_db_datetime(value)
+
+
+def _parse_detail_structured_data(detail: Any) -> dict[str, Any] | None:
+    raw_value = _get_field_value(detail, "structured_data")
+    if not raw_value:
+        return None
+
+    if isinstance(raw_value, dict):
+        return raw_value
+
+    if isinstance(raw_value, str):
+        try:
+            return json.loads(raw_value)
+        except Exception:
+            return None
+
+    return None
+
+
+def _select_callback_detail_for_pages(page_numbers: list[int], detail_by_page: dict[int, Any]) -> tuple[Any | None, list[Any]]:
+    selected_details = [detail_by_page[pn] for pn in page_numbers if pn in detail_by_page]
+    if not selected_details:
+        return None, []
+
+    # receipt_detail 桥接回调会同时带主单页和附表页，此时优先取已回写 merged receipts 数据的主单页。
+    for detail in selected_details:
+        structured_data = _parse_detail_structured_data(detail)
+        document_type = (structured_data or {}).get("document_type", "")
+        if document_type and document_type != "receipt_detail":
+            return detail, selected_details
+
+    for detail in selected_details:
+        if _get_field_value(detail, "structured_data"):
+            return detail, selected_details
+
+    return selected_details[0], selected_details
 
 
 async def heartbeat_task_claim(task_id: str, stop_event: asyncio.Event) -> None:
@@ -469,10 +505,12 @@ def send_callback_message(task_id, page_number):
             # 处理页码信息
             if isinstance(page_number, list):
                 # 合并模式：page_no为数组格式
-                first_page_no = page_number[0] if page_number else None
-                if first_page_no is not None:
-                    detail_info = detail_by_page.get(first_page_no) or detail_mapper.get_task_detail_by_id(task_id, first_page_no)
-                    selected_details = [detail_by_page[pn] for pn in page_number if pn in detail_by_page]
+                if page_number:
+                    detail_info, selected_details = _select_callback_detail_for_pages(page_number, detail_by_page)
+                    if detail_info is None:
+                        first_page_no = page_number[0]
+                        detail_info = detail_mapper.get_task_detail_by_id(task_id, first_page_no)
+                        selected_details = [detail_info] if detail_info else []
                     item_confidence_summary = _safe_build_confidence_summary(selected_details)
 
                     if detail_info:
@@ -952,6 +990,51 @@ def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
     }
 
 
+def extract_quotation_data(ocr_text):
+    """第一阶段报价单提取：文号/日期轻量兜底，其余由LLM完成。"""
+    document_type = "quotation"
+
+    regex_structured_data: dict[str, Any] = {
+        "document_type": document_type,
+        "document_no": "",
+        "quotation_date": "",
+        "customer_name": "",
+        "customer_address": "",
+        "project_name": "",
+        "supplier_id": "",
+        "supplier_name": "",
+        "supplier_phone": "",
+        "supplier_address": "",
+        "product_service": [],
+        "currency": "",
+        "total_amount": "",
+    }
+
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
+    for field, value in extracted_fields.items():
+        if field == 'product_service' and isinstance(value, list):
+            regex_structured_data[field] = value
+        else:
+            regex_structured_data[field] = value
+
+    regex_structured_data["quotation_date"] = normalize_quotation_date(regex_structured_data.get("quotation_date", ""))
+
+    logger.info(f'\n提取的报价单兜底结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
+    structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+
+    if structured_data is not None:
+        structured_data["document_type"] = document_type
+    if llm_data is not None:
+        llm_data["document_type"] = document_type
+
+    return {
+        "document_type": document_type,
+        "structured_data": structured_data,
+        "llm_structured_data": llm_data,
+        "regex_structured_data": regex_structured_data
+    }
+
+
 def extract_invoice_form_data(ocr_text):
     """使用规则引擎和BeautifulSoup提取发票数据"""
     document_type = "invoice"
@@ -1197,6 +1280,21 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'currency',
             'total_amount'
         ],
+        "quotation": [
+            'document_type',
+            'document_no',
+            'quotation_date',
+            'customer_name',
+            'customer_address',
+            'project_name',
+            'supplier_id',
+            'supplier_name',
+            'supplier_phone',
+            'supplier_address',
+            'product_service',
+            'currency',
+            'total_amount'
+        ],
         "delivery_note": [
             'document_type',
             'document_no',
@@ -1309,7 +1407,7 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     elif document_type == "delivery_note":
         return extract_delivery_note_data(ocr_text)
     elif document_type == "quotation":
-        return {}
+        return extract_quotation_data(ocr_text)
     elif document_type == "receipt":
         return {}
     elif document_type == "invoice":

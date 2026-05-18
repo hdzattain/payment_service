@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
@@ -52,3 +53,38 @@ def format_db_datetime(value: Any) -> str | None:
     if local_value is None:
         return None
     return local_value.isoformat(timespec="seconds")
+
+
+def normalize_quotation_date(date_text: str) -> str:
+    """将报价单日期统一标准化为 YYYY-MM-DD；无法识别时保留原文。"""
+    if not date_text:
+        return ""
+
+    original_text = str(date_text)
+    try:
+        normalized = re.sub(r"\s+", " ", original_text).strip().strip(".:：")
+        zh_match = re.search(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", normalized)
+        if zh_match:
+            year, month, day = zh_match.groups()
+            return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+        for fmt in (
+            "%d-%b-%Y",
+            "%d %b %Y",
+            "%d-%B-%Y",
+            "%d %B %Y",
+            "%Y/%m/%d",
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+        ):
+            try:
+                return datetime.strptime(normalized, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return normalized
+    except Exception:
+        return original_text
+
+

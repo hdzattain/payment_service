@@ -41,6 +41,30 @@ MERGE_JSON_STRUCTURES = {
   "currency": "字符串(HKD/USA/CNY/MOP等)",
   "total_amount": "字符串"
 }""",
+    "quotation": """{
+  "document_type": "quotation",
+  "document_no": "字符串",
+  "quotation_date": "字符串(yyyy-MM-dd)",
+  "customer_name": "字符串",
+  "customer_address": "字符串",
+  "project_name": "字符串",
+  "supplier_id": "字符串",
+  "supplier_name": "字符串",
+  "supplier_phone": "字符串",
+  "supplier_address": "字符串",
+  "product_service": [
+    {
+      "product_service_name": "字符串",
+      "product_service_specification": "字符串",
+      "product_service_unit": "字符串",
+      "product_service_quantity": "数字格式",
+      "product_service_unit_price": "字符串",
+      "product_service_amount": "字符串"
+    }
+  ],
+  "currency": "字符串(HKD/USA/CNY/MOP等)",
+  "total_amount": "字符串"
+}""",
     "delivery_note": """{
   "document_type": "delivery_note",
   "document_no": "字符串",
@@ -467,6 +491,8 @@ async def _process_single_ai_merge_group(task_id: str, group_key: str, group_pag
                 merged_data = await merge_delivery_note(group_pages)
             elif document_type == "invoice":
                 merged_data = await merge_invoice(group_pages)
+            elif document_type == "quotation":
+                merged_data = await merge_quotation(group_pages)
             elif document_type == "misc_materials_app":
                 merged_data = await merge_misc_materials_app(group_pages)
             else:
@@ -716,7 +742,7 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
         document_type = first_structured_data.get('document_type', '')
         # 只有指定类型的多页组，才进入 AI 合并。
         needs_ai_merge = (len(group_pages) > 1 and group_pages[0]['structured_data']
-                          and document_type in ("delivery_note", "invoice", "misc_materials_app"))
+                          and document_type in ("delivery_note", "invoice", "quotation", "misc_materials_app"))
 
         if needs_ai_merge:
             # 先收集起来，第二轮再并发跑 AI。
@@ -730,6 +756,8 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             merged_data = await merge_delivery_note(group_pages)
         elif document_type == "invoice":
             merged_data = await merge_invoice(group_pages)
+        elif document_type == "quotation":
+            merged_data = await merge_quotation(group_pages)
         elif document_type == "misc_materials_app":
             merged_data = await merge_misc_materials_app(group_pages)
         else:
@@ -813,6 +841,23 @@ async def merge_delivery_note(group_pages: list) -> Dict[str, Any]:
 
 
 async def merge_invoice(group_pages: list) -> Dict[str, Any]:
+    if len(group_pages) == 1:
+        return group_pages[0]['structured_data']
+
+    merged_data = merge_structured_fields(group_pages)
+
+    all_products = []
+    for page_data in group_pages:
+        products = page_data['structured_data'].get('product_service', [])
+        all_products.extend(products)
+
+    merged_data['product_service'] = all_products
+    merged_data['total_amount'] = calculate_merged_total_amount(group_pages)
+
+    return merged_data
+
+
+async def merge_quotation(group_pages: list) -> Dict[str, Any]:
     if len(group_pages) == 1:
         return group_pages[0]['structured_data']
 

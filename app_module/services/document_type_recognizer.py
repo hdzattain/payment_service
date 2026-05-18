@@ -75,6 +75,8 @@ class DocumentTypeRecognizer:
     ]
 
     QUOTATION_KEYWORDS = ["quotation", "報價單", "报价单"]
+    QUOTATION_NO_FIELD_KEYWORDS = ["quotation no", "quotation no."]
+    QUOTATION_DATE_FIELD_KEYWORDS = ["quotation date", "quotation date."]
 
     MISC_MATERIALS_KEYWORDS = ["地盤零星材料申請表", "地盘零星材料申请表"]
 
@@ -258,6 +260,15 @@ class DocumentTypeRecognizer:
                 ["matched quotation title keyword"],
             )
 
+        quotation_field_signals = self._count_quotation_field_signals(profile)
+        if quotation_field_signals >= 2:
+            return self._build_result(
+                "quotation",
+                "strong_rule",
+                {"quotation": 100},
+                ["matched quotation no/date fields"],
+            )
+
         if self._has_delivery_note_title(profile):
             return self._build_result(
                 "delivery_note",
@@ -337,6 +348,11 @@ class DocumentTypeRecognizer:
             scores["quotation"] += hits * 8
             reasons["quotation"].append("matched quotation keywords")
 
+        quotation_field_signals = self._count_quotation_field_signals(profile)
+        if quotation_field_signals:
+            scores["quotation"] += quotation_field_signals * 12
+            reasons["quotation"].append("matched quotation no/date fields")
+
     def _score_receipt_generic(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
         hits = sum(1 for keyword in self.RECEIPT_GENERIC_KEYWORDS if keyword in profile.text_lower or keyword in profile.raw_text)
         if hits:
@@ -402,6 +418,13 @@ class DocumentTypeRecognizer:
             scores["receipt"] -= 4
             reasons["receipt_detail"].append("penalized non-detail candidates by receipt_detail title")
 
+        quotation_field_signals = self._count_quotation_field_signals(profile)
+        if quotation_field_signals >= 2:
+            scores["invoice"] -= 6
+            scores["receipt"] -= 3
+            scores["receipts"] -= 3
+            reasons["quotation"].append("penalized non-quotation candidates by quotation no/date fields")
+
     def _select_best_result(self, scores: dict[str, int], reasons: dict[str, list[str]]) -> dict[str, Any]:
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         best_type, best_score = ranked[0]
@@ -427,6 +450,14 @@ class DocumentTypeRecognizer:
 
     def _markdown_title_matches_invoice(self, profile: _TextProfile) -> bool:
         return any(self.INVOICE_TITLE_PATTERN.match(line) for line in profile.markdown_title_lines)
+
+    def _count_quotation_field_signals(self, profile: _TextProfile) -> int:
+        signal_count = 0
+        if self._contains_any(profile.top_text_lower, self.QUOTATION_NO_FIELD_KEYWORDS):
+            signal_count += 1
+        if self._contains_any(profile.top_text_lower, self.QUOTATION_DATE_FIELD_KEYWORDS):
+            signal_count += 1
+        return signal_count
 
     @staticmethod
     def _markdown_title_contains_any(

@@ -11,6 +11,7 @@ from app_module.logger.logger_config import setup_logger
 from app_module.template.prompts_template import get_prompt_by_document_type
 
 logger = setup_logger("llm_utils")
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 def _serialize_json_for_log(data: Any) -> str:
@@ -33,6 +34,40 @@ def get_llm_api_key(api_key: str | None = None) -> str:
         raise ValueError("未配置 LLM_API_KEY 或 CSCI_DEEPSEEK_API_KEY")
     return resolved_api_key
 
+
+def get_llm_timeout_seconds(timeout: int | float | None = None) -> int:
+    return max(1, int(timeout or settings.LLM_TIMEOUT_SECONDS))
+
+
+def get_llm_max_retries() -> int:
+    return max(0, int(settings.LLM_MAX_RETRIES))
+
+
+def _extract_status_code_from_exception(exc: Exception) -> int | None:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return int(status_code) if isinstance(status_code, int) else None
+
+
+def _is_retryable_llm_exception(exc: Exception) -> bool:
+    status_code = _extract_status_code_from_exception(exc)
+    if status_code is not None:
+        return status_code in RETRYABLE_STATUS_CODES
+
+    return isinstance(
+        exc,
+        (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.SSLError,
+            requests.exceptions.ChunkedEncodingError,
+        ),
+    )
+
+
+def _get_retry_sleep_seconds(attempt_index: int) -> int:
+    return 1 if attempt_index <= 1 else 2
+
 class DeepSeekAPI:
     def __init__(self, api_key: str | None = None, base_url: str | None = None, timeout: int | float | None = None):
         """
@@ -44,7 +79,7 @@ class DeepSeekAPI:
         """
         self.api_key = get_llm_api_key(api_key)
         self.base_url = (base_url or settings.LLM_BASE_URL).rstrip("/")
-        self.timeout = max(1, int(timeout or settings.LLM_TIMEOUT_SECONDS))
+        self.timeout = get_llm_timeout_seconds(timeout)
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
@@ -104,7 +139,7 @@ class DeepSeekAPI:
             logger.error(
                 f"调用大模型API失败 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
-            raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
+            raise requests.HTTPError(f"API 请求失败: {response.status_code} - {response.text}", response=response)
 
     def embeddings(self, input_text: str | list, model: str | None = None) -> Dict[str, Any]:
         """
@@ -145,7 +180,7 @@ class DeepSeekAPI:
             logger.error(
                 f"调用大模型向量API失败 | model: {payload['model']} | status_code: {response.status_code} | response_type: {response_body_type} | 耗时: {elapsed_time:.2f}秒 | output_json: {response_body_log}"
             )
-            raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
+            raise requests.HTTPError(f"API 请求失败: {response.status_code} - {response.text}", response=response)
 
 
 def call_deepseek_api(
@@ -170,23 +205,52 @@ def call_deepseek_api(
     Returns:
         第一个候选消息的文本内容，失败时返回 None
     """
-    try:
-        client = DeepSeekAPI(api_key=api_key, base_url=base_url, timeout=timeout)
-        results = client.chat_completion(
-            messages=messages,
-            model=model or settings.LLM_CHAT_MODEL,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+    resolved_model = model or settings.LLM_CHAT_MODEL
+    resolved_timeout = get_llm_timeout_seconds(timeout)
+    max_retries = get_llm_max_retries()
+    client = DeepSeekAPI(api_key=api_key, base_url=base_url, timeout=resolved_timeout)
 
-        # 提取 choices 中的第一个 message 的 content
-        if 'choices' in results and len(results['choices']) > 0:
-            return results['choices'][0]['message']['content']
-        else:
+    for attempt in range(max_retries + 1):
+        attempt_number = attempt + 1
+        try:
+            results = client.chat_completion(
+                messages=messages,
+                model=resolved_model,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+
+            if 'choices' in results and len(results['choices']) > 0:
+                if attempt > 0:
+                    logger.info(
+                        f"调用大模型API重试后成功 | model: {resolved_model} | timeout: {resolved_timeout}s | attempt: {attempt_number}/{max_retries + 1}"
+                    )
+                return results['choices'][0]['message']['content']
+
+            logger.warning(
+                f"调用大模型API成功但choices为空 | model: {resolved_model} | timeout: {resolved_timeout}s | attempt: {attempt_number}/{max_retries + 1}"
+            )
             return None
-    except Exception as e:
-        logger.error(f"调用 DeepSeek API 时发生错误: {e}")
-        return None
+        except Exception as e:
+            retryable = _is_retryable_llm_exception(e)
+            is_last_attempt = attempt >= max_retries
+            status_code = _extract_status_code_from_exception(e)
+            logger.error(
+                f"调用大模型API时发生错误 | model: {resolved_model} | timeout: {resolved_timeout}s | attempt: {attempt_number}/{max_retries + 1} | "
+                f"retryable: {retryable} | status_code: {status_code} | error: {e}"
+            )
+
+            if not retryable or is_last_attempt:
+                return None
+
+            sleep_seconds = _get_retry_sleep_seconds(attempt_number)
+            logger.warning(
+                f"调用大模型API准备重试 | model: {resolved_model} | next_attempt: {attempt_number + 1}/{max_retries + 1} | "
+                f"wait_seconds: {sleep_seconds}"
+            )
+            time.sleep(sleep_seconds)
+
+    return None
 
 
 def generate_prompt(ocr_text: str, document_type: str) -> str:

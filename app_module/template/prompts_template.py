@@ -797,7 +797,6 @@ DELIVERY_NOTE_PROMPT = """
 3. 数据来源：仅从提供的OCR文本中提取，不编造、不猜测任何信息；
 4. 格式适配：
    - 日期统一转换为yyyy-MM-dd格式（如"04 December, 2023"转换为"2023-12-04"）；
-   - 币种保留原始文本（如HKD/人民币）；
    - 地址/名称保留中英文混合原始格式，不做翻译或修改。
 5. 币种归一化规则：
    - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
@@ -931,6 +930,270 @@ E-mail: wsmetal8@netvigator.com
 
 ## 输出要求：
 仅输出上述结构的JSON字符串，确保可直接通过Python的json.loads()解析，无需任何修改。
+"""
+
+QUOTATION_PROMPT = """
+你是专业的报价单结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**报价单 / Quotation**文本中精准提取所有字段信息。
+
+## 核心提取规则（必须严格遵守）
+1. 输出格式：仅返回**合法可解析的JSON字符串**，不添加任何解释、备注、示例或额外文字；
+2. 字段要求：
+   - 所有字段名与指定JSON结构**完全一致**；
+   - 未出现的信息统一填充为空字符串 `""`；
+   - `product_service` 为数组，有多少条有效明细就输出多少条，无明细则返回 `[]`；
+   - `product_service_quantity` 保留数字格式；
+   - `product_service_unit_price`、`product_service_amount` 仅保留数字格式，不保留千分位逗号；
+   - 日期字段统一转换为**yyyy-MM-dd**格式；
+   - 时间字段统一转换为**yyyy-MM-dd HH:mm:ss**格式；
+   - 金额/单价值：保留原文数字格式并移除币种符号与千分位逗号，如 `HK$ 1,800.00` → `1800.00`、`1800` → `1800`；
+3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
+4. 字段理解：
+   - `document_no` 优先从 `Quotation No` / `Quotation No.` 提取；
+   - `quotation_date` 优先从 `Quotation Date` / `Quotation Date.` 提取；
+   - `customer_name` 优先从 `Messrs` / `Messers` 提取；
+   - `project_name` 优先从 `Site` / `Project` / `Site/Project` 提取；
+   - `supplier_name`、`supplier_address`、`supplier_phone` 优先从页首供应商抬头信息提取，其中 `supplier_name` 优先取英文主名，若无英文主名再取中文或原文拼接；
+   - 明细若跨多行，首行主内容放入 `product_service_name`，后续标准/方法/规格说明放入 `product_service_specification`；
+   - `currency` 需归一化为 `HKD/USA/CNY/MOP`，其他币种按原文；
+5. 若当前页是续页且缺少主字段（如 `document_no`、`quotation_date`），则保持为空，不要臆造。
+6. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
+
+## 示例案例
+### 案例 1：
+#### 输入：
+---
+# Alchmex – Paul Y Joint Venture
+Central Kowloon Route Contract No. HY/2018/02 – Kai Tak East
+# 中九龍幹線 – 啟德東工程
+
+# Quotation
+
+**Quotation No. :** APYJV-CDU-24-007
+
+**Messers :** China State Construction Engineering (Hong Kong) Limited
+**Quotation Date :** 30-Jul-2022
+
+**Site :** CDX - 將軍澳海水化淡廠
+
+| Item | Description | Unit | Qty | Rate | Amount |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | 吊臂連 Winch | nos | 3 | HK$ 600.00 | HK$1,800.00 |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+
+**Total :** HK$ 1,800.00
+
+**Note :** Payment Term is 60 days from the date of Invoice.
+
+Interest will be charged on overdue accounts at the rate 2% per month.
+
+**For and on behalf of**
+**Alchmex - Paul Y Joint Venture**
+
+[Stamp: Alchmex-Paul Y Joint Venture 愛銘-保華聯營 中九龍幹線 啟德東工程 * HY/2018/02 *]
+
+Authorized Signatiure
+
+[Stamp: CHINA STATE CONST. ENG. (H.K.) LTD. 訂貨專用 中國建築工程(香港)有限公司 將軍澳海水化淡廠 第一階段 * 13/WSD/17 *]
+
+#### 输出：
+{{
+  "document_type": "quotation",
+  "document_no": "APYJV-CDU-24-007",
+  "quotation_date": "2022-07-30",
+  "customer_name": "China State Construction Engineering (Hong Kong) Limited",
+  "customer_address": "",
+  "project_name": "CDX - 將軍澳海水化淡廠",
+  "supplier_id": "",
+  "supplier_name": "Alchmex – Paul Y Joint Venture",
+  "supplier_phone": "",
+  "supplier_address": "",
+  "product_service": [
+    {{
+      "product_service_name": "吊臂連 Winch",
+      "product_service_specification": "",
+      "product_service_unit": "nos",
+      "product_service_quantity": 3,
+      "product_service_unit_price": "600.00",
+      "product_service_amount": "1800.00"
+    }}
+  ],
+  "currency": "HKD",
+  "total_amount": "1800.00"
+}}
+
+### 案例 2：
+#### 输入：
+---
+# 香港試驗有限公司
+# HONG KONG TESTING CO., LTD.
+Rm. G04, G/F., & Rm. 205, 2/F., Fuk Shing Comm. Bldg., 28 On Lok Mun St., On Lok Tsuen, Fanling, N.T. Hong Kong.
+- Tel: (852) 2692 2171 Fax: (852) 2691 4874 Email: info@hktesting.com.hk
+- Website : www.hktesting.com.hk
+香港新界粉嶺安樂村安樂門街28號福成商業大廈地下G04室及二樓205室 電話：(852) 2692 2171 傳真：(852) 2691 4874
+
+## Quotation
+
+**Messrs.** : CHINA STATE CONST. ENG'G (H.K.) LTD.
+29/F., China Overseas Building,
+139 Hennessy Road.,
+H.K.
+
+**Attn.** : Steven Lai
+**Site/Project** : Contract No.: 12/WSD/17
+Design, Build and Operate First Stage of Tseung Kwan O Desalination Plant
+
+**Quotation No.** : HQ22-0670
+**Quotation Date** : 29 Apr 2022
+**Customer** : C0279
+**Tel** : 5169 7261
+**Email** : singfun_lai@cohl.com
+
+P. 1 of 2
+
+| Item | Product Description | Qty. | Unit | Price HK$ | Amount HK$ |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| | **Calibration Services** | | | | |
+| 1) | Calibration of Temperature Distribution & Circulation of Curing Tank
+- CS1 : 2010 Vol. 1 App. A28 | 0 | No. | 1,800 | 0.00 |
+| 2) | Calibration of 100mm Cube Mould
+- CS1 : 2010 Vol. 1 App. A25 | 0 | No. | 160 | 0.00 |
+| 3) | Calibration of Slump Cone - Including Tamping Rod
+- CS1 : 2010 Vol. 1 App. A5 & A6 | 0 | No. | 450 | 0.00 |
+| 4) | Calibration of Compacting Bar
+- CS1 : 2010 Vol. 1 App. A10 | 0 | No. | 150 | 0.00 |
+| 5) | Calibration of Temperature (0, 10 to 180°C) - 3 points check
+In-House Method (HOKLAS) | 0 | No. | 630 | 0.00 |
+| 6) | Calibration of Steel Ruler (up to 300mm)
+In-House Method (HOKLAS) | 0 | No. | 420 | 0.00 |
+| | **Other** | | | | |
+| 7) | Sample collection charge | 0 | Trip | 500 | 0.00 |
+| | **Net Amount** | | | **HK$** | **0.00** |
+
+**Trade Terms** :
+1. This quotation is valid for 30 days.
+2. Rates are based on normal working hours 09:00 to 17:00, Monday to Saturday (excluding Public Holidays & lunch hour). Waiting time and overtime work instructed shall be charged for additional HK$200.00/man/hour.
+3. Rates include 1 original of test report.
+4. Additional copy will be charged at HK$10.00 per sheet without photo & HK$15.00 per sheet with photo. The minimum charge is HK$300.00.
+5. Certified true copy or Amendment of test report due to incorrect information provided by customer will be levied at HK$30.00/sheet. The minimum charge is HK$300.00.
+6. Water, electricity, scaffolding, working platform, gondola & safety facilities should be provided by customer.
+7. All our test reports & relevant data may be inspected by local Government Authorities during their surveillance visits.
+8. All the information obtained or created during the performance of laboratory activities will be kept confidential. They will only be released as required by law.
+
+Cont. on page 2
+
+#### 输出：
+{{
+  "document_type": "quotation",
+  "document_no": "HQ22-0670",
+  "quotation_date": "2022-04-29",
+  "customer_name": "CHINA STATE CONST. ENG'G (H.K.) LTD.",
+  "customer_address": "29/F., China Overseas Building, 139 Hennessy Road., H.K.",
+  "project_name": "Contract No.: 12/WSD/17 Design, Build and Operate First Stage of Tseung Kwan O Desalination Plant",
+  "supplier_id": "",
+  "supplier_name": "HONG KONG TESTING CO., LTD.",
+  "supplier_phone": "(852) 2692 2171",
+  "supplier_address": "Rm. G04, G/F., & Rm. 205, 2/F., Fuk Shing Comm. Bldg., 28 On Lok Mun St., On Lok Tsuen, Fanling, N.T. Hong Kong.",
+  "product_service": [
+    {{
+      "product_service_name": "Calibration of Temperature Distribution & Circulation of Curing Tank",
+      "product_service_specification": "CS1 : 2010 Vol. 1 App. A28",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "1800",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Calibration of 100mm Cube Mould",
+      "product_service_specification": "CS1 : 2010 Vol. 1 App. A25",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "160",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Calibration of Slump Cone - Including Tamping Rod",
+      "product_service_specification": "CS1 : 2010 Vol. 1 App. A5 & A6",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "450",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Calibration of Compacting Bar",
+      "product_service_specification": "CS1 : 2010 Vol. 1 App. A10",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "150",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Calibration of Temperature (0, 10 to 180°C) - 3 points check",
+      "product_service_specification": "In-House Method (HOKLAS)",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "630",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Calibration of Steel Ruler (up to 300mm)",
+      "product_service_specification": "In-House Method (HOKLAS)",
+      "product_service_unit": "No.",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "420",
+      "product_service_amount": "0.00"
+    }},
+    {{
+      "product_service_name": "Sample collection charge",
+      "product_service_specification": "",
+      "product_service_unit": "Trip",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "500",
+      "product_service_amount": "0.00"
+    }}
+  ],
+  "currency": "HKD",
+  "total_amount": "0.00"
+}}
+
+## OCR识别的报价单文本：
+{ocr_text}
+
+## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
+{{
+  "document_type": "字符串（文件类型，固定为\"quotation\"）",
+  "document_no": "字符串（报价单编号，如：CDX/2312/A/0090）",
+  "quotation_date": "字符串（报价单日期，格式：YYYY-MM-DD）",
+  "customer_name": "字符串（客户名称）",
+  "customer_address": "字符串（客户地址）",
+  "project_name": "字符串（项目名称）",
+  "supplier_id": "字符串（供应商ID，无则填\"\"）",
+  "supplier_name": "字符串（供应商名称，无则填\"\"）",
+  "supplier_phone": "字符串（供应商电话，无则填\"\"）",
+  "supplier_address": "字符串（供应商地址，无则填\"\"）",
+  "product_service": [
+    {{
+      "product_service_name": "字符串（产品或服务名称）",
+      "product_service_specification": "字符串（规格型号）",
+      "product_service_unit": "字符串（单位）",
+      "product_service_quantity": "数字格式（数量）",
+      "product_service_unit_price": "字符串（单价）",
+      "product_service_amount": "字符串（金額）"
+    }}
+  ],
+  "currency": "字符串（币种，归一化为 HKD/USA/CNY/MOP，其他按原文）",
+  "total_amount": "字符串（总金额）"
+}}
+
+## 最终输出要求
+仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、可直接转换为对应数据模型。
 """
 
 MISC_MATERIALS_APP_PROMPT = """
@@ -1383,6 +1646,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
     # 定义文档类型到Prompt模板的映射
     prompt_mapping = {
         "invoice": INVOICE_PROMPT,
+        "quotation": QUOTATION_PROMPT,
         "receipts": RECEIPTS_PROMPT,
         "receipt_detail": RECEIPT_DETAIL_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,
