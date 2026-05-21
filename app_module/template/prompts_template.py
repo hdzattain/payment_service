@@ -1196,6 +1196,138 @@ Cont. on page 2
 仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、可直接转换为对应数据模型。
 """
 
+RECEIPT_PROMPT = """
+你是专业的收据结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**收據 / 收据 / Receipt**文本中精准提取所有字段信息。
+
+## 核心提取规则（必须严格遵守）
+1. 输出格式：仅返回**合法可解析的JSON字符串**，不添加任何解释、备注、示例或额外文字；
+2. 字段要求：
+   - 所有字段名与指定JSON结构**完全一致**；
+   - 未出现的信息统一填充为空字符串 `""`；
+   - `product_service` 为数组，有多少条有效收费明细就输出多少条，无明细则返回 `[]`；
+   - `product_service_quantity` 保留数字格式；
+   - `product_service_unit_price`、`product_service_amount` 仅保留数字格式，不保留千分位逗号或币种符号；
+3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
+4. 字段理解：
+   - `document_type` 固定输出 `receipt`；
+   - `document_no` 取收据号 `No.` / `No`，不要误提取 `提單號碼` 作为 `document_no`；
+   - `license_plate` 取 `車牌` / `车牌`；
+   - `customer_address` 仅在明确出现客户地址时提取；
+   - `project_name` 仅在明确出现 `Site` / `Project` / `地盤` / `工程` 时提取；`貨品` 不是 `project_name`；
+   - `supplier_name`、`supplier_address`、`supplier_phone` 优先从页首供应商抬头提取，其中 `supplier_name` 优先取英文主名，若无英文主名再取中文或原文；
+5. 明细表规则：
+   - 若同一物理表格行同时包含 `過磅費` 与 `吊機費` 两类收费，允许拆成两条 `product_service`；
+   - `過磅費` / `吊機費` 等栏目标题可作为 `product_service_name`；
+   - 如 `Y12 6.15T`、`Y20 30.184斤` 这类文本，型号编号放入 `product_service_specification`，数量与单位拆到 `product_service_quantity`、`product_service_unit`；
+   - `管理費`、`代客過磅費` 若没有金额，不得输出为明细；若有金额，可单独输出为一条明细；
+   - `總金額` / `总金额` 行是汇总信息，不得写入 `product_service`；
+   - 全空行、占位行、签名行（如 `經手人`）不得写入 `product_service`；
+6. 币种归一化规则：
+   - 识别到「港币、HKD、HK.Dollars、港币/HKD」等表示港币的文本，统一归一化为 "HKD"
+   - 识别到「美元、USD、US Dollars、美金」等表示美元的文本，统一归一化为 "USA"
+   - 识别到「人民币、CNY、RMB」等表示人民币的文本，统一归一化为 "CNY"
+   - 识别到「澳币、MOP」等表示澳币的文本，统一归一化为 "MOP"
+   - 不在上述范围内的币种，按原文提取
+
+## 示例案例
+### 案例 1：
+#### 输入：
+盈信發展(香港)有限公司
+Great Success Development (Hong Kong) Limited
+寫字樓：香港灣仔告士打道151號資本中心7樓701室
+電話：2892 1522　傳真：2833 5676
+
+收據
+No. 12060
+客戶：中建（楊小）
+日期：24/12/14
+提單號碼：52611
+車牌：7F84
+貨品：螺紋鋼及鋼材
+
+<table>
+  <tr><th>過磅費</th><th colspan="4">吊機費</th></tr>
+  <tr><th>花式</th><th>金額</th><th>花式及淨重</th><th>單價</th><th>金額</th></tr>
+  <tr><td>12×200</td><td>200</td><td>Y12 6.15T</td><td>$70</td><td>431</td></tr>
+  <tr><td></td><td></td><td>Y16 6.14T</td><td>$70</td><td>430</td></tr>
+  <tr><td>總金額：</td><td></td><td></td><td></td><td>1061</td></tr>
+</table>
+
+#### 输出：
+{{
+  "document_type": "receipt",
+  "document_no": "12060",
+  "license_plate": "7F84",
+  "customer_name": "中建（楊小）",
+  "customer_address": "",
+  "project_name": "",
+  "supplier_id": "",
+  "supplier_name": "Great Success Development (Hong Kong) Limited",
+  "supplier_phone": "2892 1522",
+  "supplier_address": "寫字樓：香港灣仔告士打道151號資本中心7樓701室",
+  "product_service": [
+    {{
+      "product_service_name": "過磅費",
+      "product_service_specification": "12×200",
+      "product_service_unit": "",
+      "product_service_quantity": 0,
+      "product_service_unit_price": "",
+      "product_service_amount": "200"
+    }},
+    {{
+      "product_service_name": "吊機費",
+      "product_service_specification": "Y12",
+      "product_service_unit": "T",
+      "product_service_quantity": 6.15,
+      "product_service_unit_price": "70",
+      "product_service_amount": "431"
+    }},
+    {{
+      "product_service_name": "吊機費",
+      "product_service_specification": "Y16",
+      "product_service_unit": "T",
+      "product_service_quantity": 6.14,
+      "product_service_unit_price": "70",
+      "product_service_amount": "430"
+    }}
+  ],
+  "currency": "HKD",
+  "total_amount": "1061"
+}}
+
+## OCR识别的收据文本：
+{ocr_text}
+
+## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
+{{
+  "document_type": "字符串（文件类型，固定为\"receipt\"）",
+  "document_no": "字符串（收据编号，如：12060）",
+  "license_plate": "字符串（车牌号码）",
+  "customer_name": "字符串（客户名称）",
+  "customer_address": "字符串（客户地址，无则填\"\"）",
+  "project_name": "字符串（项目名称/地盘名称，无则填\"\"）",
+  "supplier_id": "字符串（供应商ID，无则填\"\"）",
+  "supplier_name": "字符串（供应商名称，无则填\"\"）",
+  "supplier_phone": "字符串（供应商电话，无则填\"\"）",
+  "supplier_address": "字符串（供应商地址，无则填\"\"）",
+  "product_service": [
+    {{
+      "product_service_name": "字符串（收费项目名称，如：過磅費、吊機費）",
+      "product_service_specification": "字符串（规格/花式/型号）",
+      "product_service_unit": "字符串（单位，如：T、斤）",
+      "product_service_quantity": "数字格式（数量）",
+      "product_service_unit_price": "字符串（单价）",
+      "product_service_amount": "字符串（金額）"
+    }}
+  ],
+  "currency": "字符串（币种，归一化为 HKD/USA/CNY/MOP，其他按原文）",
+  "total_amount": "字符串（总金额）"
+}}
+
+## 最终输出要求
+仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、可直接转换为对应数据模型。
+"""
+
 MISC_MATERIALS_APP_PROMPT = """
 你是专业的建筑行业杂项材料申请表结构化数据提取专家，需严格按照指定的JSON结构，从以下OCR识别的杂项材料申请表文本中提取所有字段信息，文本可能包含繁体中文/英文混合内容，请精准识别并保留原始格式。
 
@@ -1647,6 +1779,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
     prompt_mapping = {
         "invoice": INVOICE_PROMPT,
         "quotation": QUOTATION_PROMPT,
+        "receipt": RECEIPT_PROMPT,
         "receipts": RECEIPTS_PROMPT,
         "receipt_detail": RECEIPT_DETAIL_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,

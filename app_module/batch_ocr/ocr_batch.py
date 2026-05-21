@@ -90,7 +90,7 @@ def identify_document_type(ocr_text: str) -> str:
         return "supporting_docs"
 
     recognized_type = document_type_recognizer.recognize(ocr_text).get("document_type")
-    if recognized_type in {"receipt_detail", "receipts", "invoice", "delivery_note", "misc_materials_app", "transaction"}:
+    if recognized_type in {"receipt_detail", "receipts", "receipt", "invoice", "delivery_note", "misc_materials_app", "transaction"}:
         return recognized_type
     return "supporting_docs"
 

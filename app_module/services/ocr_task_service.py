@@ -990,6 +990,48 @@ def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
     }
 
 
+def extract_receipt_data(ocr_text: str):
+    document_type = "receipt"
+
+    regex_structured_data: dict[str, Any] = {
+        "document_type": document_type,
+        "document_no": "",
+        "license_plate": "",
+        "customer_name": "",
+        "customer_address": "",
+        "project_name": "",
+        "supplier_id": "",
+        "supplier_name": "",
+        "supplier_phone": "",
+        "supplier_address": "",
+        "product_service": [],
+        "currency": "",
+        "total_amount": "",
+    }
+
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(document_type, ocr_text)
+    for field, value in extracted_fields.items():
+        if field == 'product_service' and isinstance(value, list):
+            regex_structured_data[field] = value
+        else:
+            regex_structured_data[field] = value
+
+    logger.info(f'\n提取的收据兜底结构化数据: {json.dumps(regex_structured_data, ensure_ascii=False)}')
+    structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, document_type)
+
+    if structured_data is not None:
+        structured_data["document_type"] = document_type
+    if llm_data is not None:
+        llm_data["document_type"] = document_type
+
+    return {
+        "document_type": document_type,
+        "structured_data": structured_data,
+        "llm_structured_data": llm_data,
+        "regex_structured_data": regex_structured_data
+    }
+
+
 def extract_quotation_data(ocr_text):
     """第一阶段报价单提取：文号/日期轻量兜底，其余由LLM完成。"""
     document_type = "quotation"
@@ -1228,7 +1270,7 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
     通用的结构化数据识别率计算方法
 
     :param structured_data: 结构化数据字典
-    :param document_type: 文档类型（receipts, invoice, delivery_note, misc_materials_app）
+    :param document_type: 文档类型（receipts, receipt, invoice, delivery_note, misc_materials_app）
     :return: 识别率百分比
     """
     # 根据文档类型定义必需字段
@@ -1284,6 +1326,21 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'document_type',
             'document_no',
             'quotation_date',
+            'customer_name',
+            'customer_address',
+            'project_name',
+            'supplier_id',
+            'supplier_name',
+            'supplier_phone',
+            'supplier_address',
+            'product_service',
+            'currency',
+            'total_amount'
+        ],
+        "receipt": [
+            'document_type',
+            'document_no',
+            'license_plate',
             'customer_name',
             'customer_address',
             'project_name',
@@ -1409,7 +1466,7 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     elif document_type == "quotation":
         return extract_quotation_data(ocr_text)
     elif document_type == "receipt":
-        return {}
+        return extract_receipt_data(ocr_text)
     elif document_type == "invoice":
         return extract_invoice_form_data(ocr_text)
     elif document_type == "misc_materials_app":

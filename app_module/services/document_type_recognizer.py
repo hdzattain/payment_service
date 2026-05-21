@@ -77,6 +77,10 @@ class DocumentTypeRecognizer:
     QUOTATION_KEYWORDS = ["quotation", "報價單", "报价单"]
     QUOTATION_NO_FIELD_KEYWORDS = ["quotation no", "quotation no."]
     QUOTATION_DATE_FIELD_KEYWORDS = ["quotation date", "quotation date."]
+    RECEIPT_NO_PATTERNS = [
+        re.compile(r"(?:收據|收据|receipt)\s*(?:no\.?|#)\s*([a-z0-9\-/]+)", re.IGNORECASE),
+        re.compile(r"\bno\.?\s*([a-z0-9\-/]{3,})\b", re.IGNORECASE),
+    ]
 
     MISC_MATERIALS_KEYWORDS = ["地盤零星材料申請表", "地盘零星材料申请表"]
 
@@ -95,8 +99,7 @@ class DocumentTypeRecognizer:
     ]
 
     RECEIPT_GENERIC_KEYWORDS = ["receipt", "收據", "收据"]
-
-    INVOICE_TITLE_PATTERN = re.compile(r"^#*\s*invoice\s*$", re.IGNORECASE)
+    INVOICE_KEYWORDS = ["invoice", "發票", "发票"]
 
     def recognize(self, ocr_text: str) -> dict[str, Any]:
         profile = self._build_text_profile(ocr_text)
@@ -206,12 +209,12 @@ class DocumentTypeRecognizer:
                 ["matched delivery note markdown title"],
             )
 
-        if self._markdown_title_matches_invoice(profile):
+        if self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
             return self._build_result(
                 "invoice",
                 "strong_rule",
                 {"invoice": 100},
-                ["matched invoice markdown title"],
+                ["matched invoice keyword in markdown title"],
             )
 
         if self._markdown_title_contains_any(profile, ["transaction record", "transaction detail", "igbt"], ignore_case=True) or self._markdown_title_contains_any(
@@ -269,6 +272,14 @@ class DocumentTypeRecognizer:
                 ["matched quotation no/date fields"],
             )
 
+        if self._contains_any(profile.top_text_lower, ["receipt"]) or any(keyword in profile.top_text for keyword in ("收據", "收据")):
+            return self._build_result(
+                "receipt",
+                "strong_rule",
+                {"receipt": 100},
+                ["matched receipt title keyword in top area"],
+            )
+
         if self._has_delivery_note_title(profile):
             return self._build_result(
                 "delivery_note",
@@ -279,9 +290,9 @@ class DocumentTypeRecognizer:
 
         invoice_signals = 0
         invoice_reasons: list[str] = []
-        if any(self.INVOICE_TITLE_PATTERN.match(line) for line in profile.top_lines):
+        if self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
             invoice_signals += 2
-            invoice_reasons.append("matched standalone invoice title")
+            invoice_reasons.append("matched invoice keyword in markdown title")
         if self._contains_any(profile.top_text_lower, ["invoice no", "invoice no."]):
             invoice_signals += 1
             invoice_reasons.append("matched invoice no field")
@@ -312,6 +323,9 @@ class DocumentTypeRecognizer:
         return None
 
     def _score_receipt_detail(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.RECEIPT_DETAIL_KEYWORDS, ignore_space=True):
+            return
+
         if self._contains_any(profile.text_lower_no_space, ["摘要明細", "摘要明细"]):
             scores["receipt_detail"] += 4
             reasons["receipt_detail"].append("matched detail summary wording")
@@ -324,6 +338,9 @@ class DocumentTypeRecognizer:
             reasons["receipt_detail"].append("matched receipt_detail table structure")
 
     def _score_receipts(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.RECEIPTS_KEYWORDS):
+            return
+
         hits = sum(1 for keyword in self.RECEIPTS_KEYWORDS if keyword in profile.raw_text)
         if hits:
             scores["receipts"] += hits * 20
@@ -337,12 +354,18 @@ class DocumentTypeRecognizer:
             reasons["receipts"].append("matched receipts-like business fields")
 
     def _score_delivery_note(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.DELIVERY_NOTE_KEYWORDS, ignore_case=True):
+            return
+
         hits = sum(1 for keyword in self.DELIVERY_NOTE_KEYWORDS if keyword in profile.text_lower or keyword in profile.raw_text)
         if hits:
             scores["delivery_note"] += hits * 8
             reasons["delivery_note"].append("matched delivery note keywords")
 
     def _score_quotation(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.QUOTATION_KEYWORDS, ignore_case=True):
+            return
+
         hits = sum(1 for keyword in self.QUOTATION_KEYWORDS if keyword in profile.text_lower or keyword in profile.raw_text)
         if hits:
             scores["quotation"] += hits * 8
@@ -354,15 +377,26 @@ class DocumentTypeRecognizer:
             reasons["quotation"].append("matched quotation no/date fields")
 
     def _score_receipt_generic(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.RECEIPT_GENERIC_KEYWORDS, ignore_case=True):
+            return
+
         hits = sum(1 for keyword in self.RECEIPT_GENERIC_KEYWORDS if keyword in profile.text_lower or keyword in profile.raw_text)
         if hits:
             scores["receipt"] += min(hits, 2) * 3
             reasons["receipt"].append("matched generic receipt wording")
 
+        receipt_field_signals = self._count_receipt_field_signals(profile)
+        if receipt_field_signals:
+            scores["receipt"] += receipt_field_signals * 4
+            reasons["receipt"].append("matched receipt business fields")
+
     def _score_invoice(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
-        if any(self.INVOICE_TITLE_PATTERN.match(line) for line in profile.top_lines):
+        if not self._text_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
+            return
+
+        if self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
             scores["invoice"] += 30
-            reasons["invoice"].append("matched invoice title")
+            reasons["invoice"].append("matched invoice keyword in markdown title")
         if self._contains_any(profile.text_lower, ["invoice no", "invoice no."]):
             scores["invoice"] += 12
             reasons["invoice"].append("matched invoice no")
@@ -383,12 +417,18 @@ class DocumentTypeRecognizer:
             reasons["invoice"].append("matched invoice table structure")
 
     def _score_misc_materials(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.MISC_MATERIALS_KEYWORDS):
+            return
+
         hits = sum(1 for keyword in self.MISC_MATERIALS_KEYWORDS if keyword in profile.raw_text)
         if hits:
             scores["misc_materials_app"] += hits * 15
             reasons["misc_materials_app"].append("matched misc materials keywords")
 
     def _score_transaction(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.TRANSACTION_KEYWORDS, ignore_case=True):
+            return
+
         hits = sum(1 for keyword in self.TRANSACTION_KEYWORDS if keyword in profile.text_lower or keyword in profile.raw_text)
         if hits:
             scores["transaction"] += hits * 8
@@ -397,7 +437,7 @@ class DocumentTypeRecognizer:
     def _apply_conflict_penalties(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
         invoice_signals = sum(
             1 for condition in [
-                any(self.INVOICE_TITLE_PATTERN.match(line) for line in profile.top_lines),
+                self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True),
                 self._contains_any(profile.text_lower, ["invoice no", "invoice no."]),
                 "invoice date" in profile.text_lower,
                 "bill to" in profile.text_lower,
@@ -425,6 +465,10 @@ class DocumentTypeRecognizer:
             scores["receipts"] -= 3
             reasons["quotation"].append("penalized non-quotation candidates by quotation no/date fields")
 
+        if any(keyword in profile.raw_text for keyword in self.RECEIPTS_KEYWORDS):
+            scores["receipt"] -= 4
+            reasons["receipts"].append("penalized generic receipt by receipts title")
+
     def _select_best_result(self, scores: dict[str, int], reasons: dict[str, list[str]]) -> dict[str, Any]:
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         best_type, best_score = ranked[0]
@@ -448,9 +492,6 @@ class DocumentTypeRecognizer:
             keyword in profile.top_text for keyword in ["送貨簽收單", "送貨單", "交貨單", "送货签收单", "送货单", "交货单"]
         )
 
-    def _markdown_title_matches_invoice(self, profile: _TextProfile) -> bool:
-        return any(self.INVOICE_TITLE_PATTERN.match(line) for line in profile.markdown_title_lines)
-
     def _count_quotation_field_signals(self, profile: _TextProfile) -> int:
         signal_count = 0
         if self._contains_any(profile.top_text_lower, self.QUOTATION_NO_FIELD_KEYWORDS):
@@ -458,6 +499,45 @@ class DocumentTypeRecognizer:
         if self._contains_any(profile.top_text_lower, self.QUOTATION_DATE_FIELD_KEYWORDS):
             signal_count += 1
         return signal_count
+
+    def _count_receipt_field_signals(self, profile: _TextProfile) -> int:
+        signal_count = 0
+        if any(pattern.search(profile.top_text_lower) for pattern in self.RECEIPT_NO_PATTERNS):
+            signal_count += 1
+        if any(keyword in profile.top_text for keyword in ("日期",)):
+            signal_count += 1
+        if any(keyword in profile.top_text for keyword in ("提單號碼", "提单号码")):
+            signal_count += 1
+        if any(keyword in profile.top_text for keyword in ("車牌", "车牌")):
+            signal_count += 1
+        if any(keyword in profile.top_text for keyword in ("貨品", "货品")):
+            signal_count += 1
+        if any(keyword in profile.top_text for keyword in ("客戶", "客户")):
+            signal_count += 1
+        return signal_count
+
+    @staticmethod
+    def _text_contains_any(
+        profile: _TextProfile,
+        keywords: list[str],
+        *,
+        ignore_case: bool = False,
+        ignore_space: bool = False,
+    ) -> bool:
+        if ignore_space:
+            text = profile.text_no_space
+            candidate_keywords = [re.sub(r"\s+", "", keyword) for keyword in keywords]
+            if ignore_case:
+                text = text.lower()
+                candidate_keywords = [keyword.lower() for keyword in candidate_keywords]
+        elif ignore_case:
+            text = profile.text_lower
+            candidate_keywords = [keyword.lower() for keyword in keywords]
+        else:
+            text = profile.raw_text
+            candidate_keywords = keywords
+
+        return any(keyword in text for keyword in candidate_keywords)
 
     @staticmethod
     def _markdown_title_contains_any(

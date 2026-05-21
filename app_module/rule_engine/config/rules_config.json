@@ -536,6 +536,157 @@
       }
     ]
   },
+  "receipt": {
+    "document_no": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:收據|收据|Receipt)\\s*(?:No\\.?|#)\\s*([A-Za-z0-9\\-/]+)",
+            "weight": 0.95,
+            "flags": 2
+          },
+          {
+            "value": "\\bNo\\.?\\s*([A-Za-z0-9\\-/]{3,})",
+            "weight": 0.8,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.6
+      }
+    ],
+    "license_plate": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:車牌|车牌)[：:][^\\S\\r\\n]*([^\\s\\n\\r]+)",
+            "weight": 0.95
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "customer_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:客戶|客户)[：:]\\s*([^\\n\\r]+?)(?=\\s+(?:日期|提單號碼|提单号码|車牌|车牌)[：:]|$)",
+            "weight": 0.95
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "project_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:Site|Project|Site/Project|地盤|地盘|工程名稱|工程名称)[：:]\\s*([^\\n\\r]+(?:\\n[^\\n\\r]+)?)",
+            "weight": 0.8,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "supplier_name": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "^([^\\n\\r]*[A-Za-z][^\\n\\r]*(?:Limited|Ltd\\.?|Company)[^\\n\\r]*)$",
+            "weight": 0.9,
+            "flags": 10
+          },
+          {
+            "value": "^([^\\n\\r]*(?:有限公司|公司)[^\\n\\r]*)$",
+            "weight": 0.7,
+            "flags": 10
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "supplier_phone": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:電話|Tel)[：:]\\s*([0-9()]+(?:[\\s　]+[0-9()]+)*)(?=\\s*(?:傳真|传真|Fax|$))",
+            "weight": 0.85,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "supplier_address": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "^(寫字樓[：:].*?)(?=\\s*(?:電話|Tel|傳真|传真|Fax|$))",
+            "weight": 0.85,
+            "flags": 10
+          },
+          {
+            "value": "^(办公室[：:].*?|辦公室[：:].*?|倉庫[：:].*?|仓库[：:].*?)(?=\\s*(?:電話|Tel|傳真|传真|Fax|$))",
+            "weight": 0.8,
+            "flags": 10
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "total_amount": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:總金額|总金额)[：:]\\s*(?:HK\\$|\\$|HKD|USD|CNY|RMB|MOP)?\\s*([0-9,]+(?:\\.[0-9]+)?)",
+            "weight": 0.95,
+            "flags": 2
+          },
+          {
+            "value": "(?:總金額|总金额)[：:]?(?:.|\\n){0,80}?([0-9,]+(?:\\.[0-9]+)?)",
+            "weight": 0.8,
+            "flags": 10
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ],
+    "currency": [
+      {
+        "rule_type": "regex",
+        "patterns": [
+          {
+            "value": "(?:總金額|总金额)[：:]\\s*(HK\\$|\\$|HKD|USD|CNY|RMB|MOP)",
+            "weight": 0.85,
+            "flags": 2
+          },
+          {
+            "value": "(HK\\$|HKD|USD|CNY|RMB|MOP|\\$)",
+            "weight": 0.6,
+            "flags": 2
+          }
+        ],
+        "weight": 1.0,
+        "confidence_threshold": 0.5
+      }
+    ]
+  },
   "invoice": {
     "document_no": [
       {
