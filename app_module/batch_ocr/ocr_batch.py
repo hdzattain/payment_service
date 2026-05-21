@@ -5,6 +5,10 @@ import time
 import logging
 from datetime import datetime
 
+from app_module.core.document_types import (
+    PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
+    PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
+)
 from app_module.batch_ocr.olmocr_service import run_ocr_task
 from app_module.services.document_type_recognizer import document_type_recognizer
 
@@ -90,7 +94,7 @@ def identify_document_type(ocr_text: str) -> str:
         return "supporting_docs"
 
     recognized_type = document_type_recognizer.recognize(ocr_text).get("document_type")
-    if recognized_type in {"receipt_detail", "receipts", "receipt", "invoice", "delivery_note", "misc_materials_app", "transaction"}:
+    if recognized_type in {PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE, PAYMENT_REQUEST_FORM_DOCUMENT_TYPE, "receipt", "invoice", "delivery_note", "misc_materials_app", "transaction"}:
         return recognized_type
     return "supporting_docs"
 

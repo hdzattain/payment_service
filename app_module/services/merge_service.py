@@ -7,6 +7,10 @@ from typing import Dict, Any, Optional
 from json_repair import repair_json
 
 from app_module.core.config import settings
+from app_module.core.document_types import (
+    PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
+    PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
+)
 from app_module.logger.logger_config import setup_logger
 from app_module.mapper.ocr_task_detail_mapper import OcrTaskDetailMapper
 from app_module.database.ocr_database import SessionLocal
@@ -17,6 +21,50 @@ AI_MERGE_MAX_CONCURRENCY = 4
 
 # 各文档类型的合并输出JSON结构定义（精简版，仅字段名和类型）
 MERGE_JSON_STRUCTURES = {
+    PAYMENT_REQUEST_FORM_DOCUMENT_TYPE: """{
+  "document_type": "payment_request_form",
+  "site_name": "字符串",
+  "material_category": "字符串",
+  "date": "字符串(yyyy-MM-dd)",
+  "supplier_name": "字符串",
+  "document_no": "字符串",
+  "contract_no": "字符串",
+  "invoice_date": "字符串(yyyy-MM-dd)",
+  "payment_method": "字符串",
+  "total_amount": "字符串",
+  "currency": "字符串(HKD/USA/CNY/MOP等)",
+  "product_service": [
+    {
+      "product_service_name": "字符串",
+      "product_service_specification": "字符串",
+      "product_service_delivery_note_no": "字符串",
+      "product_service_unit": "字符串",
+      "product_service_quantity": "数字格式",
+      "product_service_unit_price": "字符串",
+      "product_service_amount": "字符串"
+    }
+  ],
+  "invoice_no": "字符串",
+  "delivery_note_no": "字符串",
+  "remarks": "字符串"
+}""",
+    PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE: """{
+  "document_type": "payment_request_form_detail",
+  "document_no": "字符串",
+  "product_service": [
+    {
+      "product_service_name": "字符串",
+      "product_service_specification": "字符串",
+      "product_service_delivery_note_no": "字符串",
+      "product_service_unit": "字符串",
+      "product_service_quantity": "数字格式",
+      "product_service_unit_price": "字符串",
+      "product_service_amount": "字符串",
+      "product_service_contract_no": "字符串"
+    }
+  ],
+  "total_amount": "字符串"
+}""",
     "invoice": """{
   "document_type": "invoice",
   "document_no": "字符串",
@@ -166,8 +214,8 @@ AI_MERGE_PROMPT = """你是一名专业的文档数据合并专家。以下是�
 仅输出合并后的JSON字符串，确保可直接通过Python的json.loads()解析，不添加任何解释、备注或额外文字。
 """
 
-RECEIPT_DETAIL_MERGE_JSON_STRUCTURE = """{
-  "document_type": "receipt_detail",
+PAYMENT_REQUEST_FORM_DETAIL_MERGE_JSON_STRUCTURE = """{
+  "document_type": "payment_request_form_detail",
   "document_no": "字符串",
   "product_service": [
     {
@@ -184,18 +232,18 @@ RECEIPT_DETAIL_MERGE_JSON_STRUCTURE = """{
   "total_amount": "字符串"
 }"""
 
-AI_RECEIPT_DETAIL_MERGE_PROMPT = """你是一名专业的建筑行业票据语义合并专家。当前需要把同一张物资付款办理单的主单(receipts)与附表摘要明细(receipt_detail)做二次语义理解。
+AI_PAYMENT_REQUEST_FORM_DETAIL_MERGE_PROMPT = """你是一名专业的建筑行业票据语义合并专家。当前需要把同一张物资付款办理单的主单(payment_request_form)与附表摘要明细(payment_request_form_detail)做二次语义理解。
 
 ## 合并目标
-1. receipts 页面仅作为主单上下文，提供 document_no 及其余主字段参考。
-2. receipt_detail 页面是附表明细，最终输出中的 `product_service` 和 `total_amount` 必须以 receipt_detail 页面识别结果为准。
-3. 需要结合 receipts / receipt_detail 的 OCR 原文与结构化结果，对多页 receipt_detail 做去重、纠错、合并，避免重复商品、金额识别错误、页间断裂。
+1. payment_request_form 页面仅作为主单上下文，提供 document_no 及其余主字段参考。
+2. payment_request_form_detail 页面是附表明细，最终输出中的 `product_service` 和 `total_amount` 必须以 payment_request_form_detail 页面识别结果为准。
+3. 需要结合 payment_request_form / payment_request_form_detail 的 OCR 原文与结构化结果，对多页 payment_request_form_detail 做去重、纠错、合并，避免重复商品、金额识别错误、页间断裂。
 4. 不要凭空臆造文本中不存在的信息。
 
-## receipts 主单上下文
-{receipt_pages_json}
+## payment_request_form 主单上下文
+{payment_request_form_pages_json}
 
-## receipt_detail 附表页面
+## payment_request_form_detail 附表页面
 {detail_pages_json}
 
 ## 输出JSON结构要求（字段名、层级、类型必须完全匹配）
@@ -336,13 +384,13 @@ def _write_merged_data_to_pages(task_id: str, page_numbers: list[int], merged_da
         return False
 
 
-def _build_receipt_bridge_callback_page_numbers(receipt_pages: list, detail_pages: list) -> list[int]:
+def _build_payment_request_form_bridge_callback_page_numbers(payment_request_form_pages: list, detail_pages: list) -> list[int]:
     # 回调页码需要同时带上主单页和附表页，方便调用方感知完整桥接范围。
-    combined_page_numbers = [page['page_no'] for page in [*receipt_pages, *detail_pages] if 'page_no' in page]
+    combined_page_numbers = [page['page_no'] for page in [*payment_request_form_pages, *detail_pages] if 'page_no' in page]
     return sorted(set(combined_page_numbers))
 
 
-def merge_receipts_like_pages(group_pages: list, document_type: str = "receipt_detail") -> Dict[str, Any]:
+def merge_payment_request_form_like_pages(group_pages: list, document_type: str = PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE) -> Dict[str, Any]:
     if len(group_pages) == 1:
         merged_data = _clone_json_data(group_pages[0]['structured_data'])
         merged_data['document_type'] = document_type
@@ -361,26 +409,26 @@ def merge_receipts_like_pages(group_pages: list, document_type: str = "receipt_d
     return merged_data
 
 
-def build_receipts_callback_base(receipt_pages: list) -> Dict[str, Any]:
-    if not receipt_pages:
+def build_payment_request_form_callback_base(payment_request_form_pages: list) -> Dict[str, Any]:
+    if not payment_request_form_pages:
         return {}
 
-    if len(receipt_pages) == 1:
-        base_data = _clone_json_data(receipt_pages[0]['structured_data'])
+    if len(payment_request_form_pages) == 1:
+        base_data = _clone_json_data(payment_request_form_pages[0]['structured_data'])
     else:
-        base_data = merge_structured_fields(receipt_pages)
-        base_data['product_service'] = get_first_non_empty_value(receipt_pages, 'product_service') or []
-        base_data['total_amount'] = get_first_non_empty_value(receipt_pages, 'total_amount') or ''
+        base_data = merge_structured_fields(payment_request_form_pages)
+        base_data['product_service'] = get_first_non_empty_value(payment_request_form_pages, 'product_service') or []
+        base_data['total_amount'] = get_first_non_empty_value(payment_request_form_pages, 'total_amount') or ''
 
-    base_data['document_type'] = 'receipts'
+    base_data['document_type'] = PAYMENT_REQUEST_FORM_DOCUMENT_TYPE
     if not base_data.get('document_no'):
-        base_data['document_no'] = receipt_pages[0]['structured_data'].get('document_no', '')
+        base_data['document_no'] = payment_request_form_pages[0]['structured_data'].get('document_no', '')
     return base_data
 
 
-def build_receipt_detail_callback_data(receipt_pages: list, detail_merged_data: dict[str, Any]) -> Dict[str, Any]:
-    merged_data = build_receipts_callback_base(receipt_pages)
-    merged_data['document_type'] = 'receipts'
+def build_payment_request_form_detail_callback_data(payment_request_form_pages: list, detail_merged_data: dict[str, Any]) -> Dict[str, Any]:
+    merged_data = build_payment_request_form_callback_base(payment_request_form_pages)
+    merged_data['document_type'] = PAYMENT_REQUEST_FORM_DOCUMENT_TYPE
     merged_data['document_no'] = (
         merged_data.get('document_no')
         or detail_merged_data.get('document_no', '')
@@ -393,19 +441,19 @@ def build_receipt_detail_callback_data(receipt_pages: list, detail_merged_data: 
     return merged_data
 
 
-async def ai_merge_receipt_detail_pages(receipt_pages: list, detail_pages: list) -> Optional[Dict[str, Any]]:
-    receipt_pages_json = json.dumps(_build_page_merge_prompt_payload(receipt_pages), ensure_ascii=False, indent=2)
+async def ai_merge_payment_request_form_detail_pages(payment_request_form_pages: list, detail_pages: list) -> Optional[Dict[str, Any]]:
+    payment_request_form_pages_json = json.dumps(_build_page_merge_prompt_payload(payment_request_form_pages), ensure_ascii=False, indent=2)
     detail_pages_json = json.dumps(_build_page_merge_prompt_payload(detail_pages), ensure_ascii=False, indent=2)
-    prompt = AI_RECEIPT_DETAIL_MERGE_PROMPT.format(
-        receipt_pages_json=receipt_pages_json,
+    prompt = AI_PAYMENT_REQUEST_FORM_DETAIL_MERGE_PROMPT.format(
+        payment_request_form_pages_json=payment_request_form_pages_json,
         detail_pages_json=detail_pages_json,
-        json_structure=RECEIPT_DETAIL_MERGE_JSON_STRUCTURE,
+        json_structure=PAYMENT_REQUEST_FORM_DETAIL_MERGE_JSON_STRUCTURE,
     )
 
     messages = [{"role": "user", "content": prompt}]
     api_key = settings.resolved_llm_api_key
     start_time = time.time()
-    logger.info(f"开始调用AI桥接 receipt_detail，主单页数: {len(receipt_pages)}，附表页数: {len(detail_pages)}")
+    logger.info(f"开始调用AI桥接 payment_request_form_detail，主单页数: {len(payment_request_form_pages)}，附表页数: {len(detail_pages)}")
 
     try:
         response_content = await asyncio.to_thread(
@@ -418,20 +466,20 @@ async def ai_merge_receipt_detail_pages(receipt_pages: list, detail_pages: list)
         )
 
         elapsed_time = time.time() - start_time
-        logger.info(f"receipt_detail AI合并调用完成 | 附表页数: {len(detail_pages)} | 耗时: {elapsed_time:.2f}秒")
+        logger.info(f"payment_request_form_detail AI合并调用完成 | 附表页数: {len(detail_pages)} | 耗时: {elapsed_time:.2f}秒")
 
         if response_content is None:
-            logger.warning(f"receipt_detail AI合并返回空结果 | 耗时: {elapsed_time:.2f}秒")
+            logger.warning(f"payment_request_form_detail AI合并返回空结果 | 耗时: {elapsed_time:.2f}秒")
             return None
 
         merged_data = json.loads(repair_json(response_content))
-        merged_data['document_type'] = 'receipt_detail'
-        if not merged_data.get('document_no') and receipt_pages:
-            merged_data['document_no'] = receipt_pages[0]['structured_data'].get('document_no', '')
+        merged_data['document_type'] = PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE
+        if not merged_data.get('document_no') and payment_request_form_pages:
+            merged_data['document_no'] = payment_request_form_pages[0]['structured_data'].get('document_no', '')
         return merged_data
     except Exception as e:
         elapsed_time = time.time() - start_time
-        logger.error(f"receipt_detail AI合并失败 | 耗时: {elapsed_time:.2f}秒 | 错误: {str(e)}", exc_info=True)
+        logger.error(f"payment_request_form_detail AI合并失败 | 耗时: {elapsed_time:.2f}秒 | 错误: {str(e)}", exc_info=True)
         return None
 
 
@@ -537,39 +585,39 @@ async def _process_single_ai_merge_group(task_id: str, group_key: str, group_pag
         return {page_data['page_no']: merged_data for page_data in group_pages}
 
 
-async def _process_receipt_detail_bridge_group(task_id: str, document_no: str, receipt_pages: list, detail_pages: list,
-                                               callback_fn=None,
-                                               semaphore: asyncio.Semaphore | None = None) -> Dict[int, Dict[str, Any]]:
+async def _process_payment_request_form_detail_bridge_group(task_id: str, document_no: str, payment_request_form_pages: list, detail_pages: list,
+                                                            callback_fn=None,
+                                                            semaphore: asyncio.Semaphore | None = None) -> Dict[int, Dict[str, Any]]:
     if semaphore is None:
         semaphore = asyncio.Semaphore(AI_MERGE_MAX_CONCURRENCY)
 
     async with semaphore:
         logger.info(
-            f"开始处理 receipt_detail 合并组: document_no={document_no}, receipts_pages={len(receipt_pages)}, detail_pages={len(detail_pages)}"
+            f"开始处理 payment_request_form_detail 合并组: document_no={document_no}, payment_request_form_pages={len(payment_request_form_pages)}, detail_pages={len(detail_pages)}"
         )
 
         if len(detail_pages) > 1:
-            detail_merged_data = await ai_merge_receipt_detail_pages(receipt_pages, detail_pages)
+            detail_merged_data = await ai_merge_payment_request_form_detail_pages(payment_request_form_pages, detail_pages)
             if detail_merged_data is None:
-                logger.warning(f"receipt_detail AI合并失败，使用规则兜底: document_no={document_no}")
-                detail_merged_data = merge_receipts_like_pages(detail_pages, document_type="receipt_detail")
+                logger.warning(f"payment_request_form_detail AI合并失败，使用规则兜底: document_no={document_no}")
+                detail_merged_data = merge_payment_request_form_like_pages(detail_pages, document_type=PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE)
         else:
-            detail_merged_data = merge_receipts_like_pages(detail_pages, document_type="receipt_detail")
+            detail_merged_data = merge_payment_request_form_like_pages(detail_pages, document_type=PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE)
 
-        merged_data = build_receipt_detail_callback_data(receipt_pages, detail_merged_data)
-        receipt_page_numbers = sorted(page['page_no'] for page in receipt_pages)
+        merged_data = build_payment_request_form_detail_callback_data(payment_request_form_pages, detail_merged_data)
+        payment_request_form_page_numbers = sorted(page['page_no'] for page in payment_request_form_pages)
         # 数据仍只回写主单页，但回调页码要带上对应附表页。
-        callback_page_numbers = _build_receipt_bridge_callback_page_numbers(receipt_pages, detail_pages)
-        db_write_succeeded = _write_merged_data_to_pages(task_id, receipt_page_numbers, merged_data)
+        callback_page_numbers = _build_payment_request_form_bridge_callback_page_numbers(payment_request_form_pages, detail_pages)
+        db_write_succeeded = _write_merged_data_to_pages(task_id, payment_request_form_page_numbers, merged_data)
 
         if callback_fn and db_write_succeeded:
             try:
-                # 桥接回调时返回 receipts + receipt_detail 的完整页码列表。
+                # 桥接回调时返回 payment_request_form + payment_request_form_detail 的完整页码列表。
                 await callback_fn(task_id, callback_page_numbers)
             except Exception as cb_err:
-                logger.error(f"receipt_detail 合并组回调异常: document_no={document_no}, error={cb_err}")
+                logger.error(f"payment_request_form_detail 合并组回调异常: document_no={document_no}, error={cb_err}")
 
-        return {page_no: merged_data for page_no in receipt_page_numbers}
+        return {page_no: merged_data for page_no in payment_request_form_page_numbers}
 
 
 async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan_fn=None,
@@ -612,11 +660,11 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
 
 
     consumed_pages: set[int] = set()
-    receipt_merge_groups: list[tuple[str, list, list]] = []
-    receipts_by_doc_no: dict[str, list] = {}
-    receipt_detail_by_doc_no: dict[str, list] = {}
+    payment_request_form_merge_groups: list[tuple[str, list, list]] = []
+    payment_request_form_by_doc_no: dict[str, list] = {}
+    payment_request_form_detail_by_doc_no: dict[str, list] = {}
 
-    # 先把 receipts / receipt_detail 按 document_no 分桶，后面用于桥接。
+    # 先把 payment_request_form / payment_request_form_detail 按 document_no 分桶，后面用于桥接。
     for page_data in pages_data:
         structured_data = page_data['structured_data']
         if not structured_data:
@@ -627,21 +675,21 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
         if not document_no:
             continue
 
-        if document_type == 'receipts':
-            receipts_by_doc_no.setdefault(document_no, []).append(page_data)
-        elif document_type == 'receipt_detail':
-            receipt_detail_by_doc_no.setdefault(document_no, []).append(page_data)
+        if document_type == PAYMENT_REQUEST_FORM_DOCUMENT_TYPE:
+            payment_request_form_by_doc_no.setdefault(document_no, []).append(page_data)
+        elif document_type == PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE:
+            payment_request_form_detail_by_doc_no.setdefault(document_no, []).append(page_data)
 
-    # 找出能和主单匹配上的 receipt_detail 组，并标记这些页已被消费。
-    for document_no, detail_pages in sorted(receipt_detail_by_doc_no.items()):
-        receipt_pages = receipts_by_doc_no.get(document_no)
-        if not receipt_pages:
+    # 找出能和主单匹配上的 payment_request_form_detail 组，并标记这些页已被消费。
+    for document_no, detail_pages in sorted(payment_request_form_detail_by_doc_no.items()):
+        payment_request_form_pages = payment_request_form_by_doc_no.get(document_no)
+        if not payment_request_form_pages:
             continue
 
-        receipt_pages = sorted(receipt_pages, key=lambda item: item['page_no'])
+        payment_request_form_pages = sorted(payment_request_form_pages, key=lambda item: item['page_no'])
         detail_pages = sorted(detail_pages, key=lambda item: item['page_no'])
-        consumed_pages.update(page['page_no'] for page in [*receipt_pages, *detail_pages])
-        receipt_merge_groups.append((document_no, receipt_pages, detail_pages))
+        consumed_pages.update(page['page_no'] for page in [*payment_request_form_pages, *detail_pages])
+        payment_request_form_merge_groups.append((document_no, payment_request_form_pages, detail_pages))
 
     # 剩余页再进入普通分组 / 合并逻辑。
     remaining_pages = [page for page in pages_data if page['page_no'] not in consumed_pages]
@@ -662,9 +710,9 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             document_no = _normalize_group_document_no(structured_data.get('document_no', ''))
             document_type = structured_data.get('document_type', '')
 
-            if document_type == 'receipt_detail':
-                # 附表本身不单独回调，只作为 receipts 的补强来源。
-                logger.info(f"receipt_detail 页面不参与回调: task_id={task_id}, page={page_data['page_no']}")
+            if document_type == PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE:
+                # 附表本身不单独回调，只作为 payment_request_form 的补强来源。
+                logger.info(f"payment_request_form_detail 页面不参与回调: task_id={task_id}, page={page_data['page_no']}")
                 continue
 
             if not document_no:
@@ -677,17 +725,17 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             groups.setdefault(group_key, []).append(page_data)
             callback_candidate_pages.append(page_data)
 
-        total_callbacks = len(receipt_merge_groups) + len(groups)
+        total_callbacks = len(payment_request_form_merge_groups) + len(groups)
     else:
-        # 非合并模式：普通页面按页回调，但 receipt_detail 仍不单独回调。
+        # 非合并模式：普通页面按页回调，但 payment_request_form_detail 仍不单独回调。
         callback_candidate_pages = [
             page_data for page_data in remaining_pages
             if not (
                 page_data['structured_data']
-                and page_data['structured_data'].get('document_type', '') == 'receipt_detail'
+                and page_data['structured_data'].get('document_type', '') == PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE
             )
         ]
-        total_callbacks = len(receipt_merge_groups) + len(callback_candidate_pages)
+        total_callbacks = len(payment_request_form_merge_groups) + len(callback_candidate_pages)
 
     if prepare_callback_plan_fn:
         try:
@@ -699,24 +747,24 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             logger.error(f"初始化合并回调计划失败: task_id={task_id}, error={plan_err}", exc_info=True)
 
     merged_results = {}
-    pending_receipt_ai_groups: list[tuple[str, list, list]] = []
+    pending_payment_request_form_detail_ai_groups: list[tuple[str, list, list]] = []
 
-    # 先处理 receipt_detail -> receipts 的单页桥接；多页附表先暂存，后面再走 AI 合并。
-    for document_no, receipt_pages, detail_pages in receipt_merge_groups:
+    # 先处理 payment_request_form_detail -> payment_request_form 的单页桥接；多页附表先暂存，后面再走 AI 合并。
+    for document_no, payment_request_form_pages, detail_pages in payment_request_form_merge_groups:
         if len(detail_pages) > 1:
-            pending_receipt_ai_groups.append((document_no, receipt_pages, detail_pages))
+            pending_payment_request_form_detail_ai_groups.append((document_no, payment_request_form_pages, detail_pages))
             continue
 
-        merged_data = build_receipt_detail_callback_data(
-            receipt_pages,
-            merge_receipts_like_pages(detail_pages, document_type="receipt_detail")
+        merged_data = build_payment_request_form_detail_callback_data(
+            payment_request_form_pages,
+            merge_payment_request_form_like_pages(detail_pages, document_type=PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE)
         )
-        receipt_page_numbers = sorted(page['page_no'] for page in receipt_pages)
+        payment_request_form_page_numbers = sorted(page['page_no'] for page in payment_request_form_pages)
         # 单页附表桥接也统一返回主单页 + 附表页的完整页码。
-        callback_page_numbers = _build_receipt_bridge_callback_page_numbers(receipt_pages, detail_pages)
-        db_write_succeeded = _write_merged_data_to_pages(task_id, receipt_page_numbers, merged_data)
+        callback_page_numbers = _build_payment_request_form_bridge_callback_page_numbers(payment_request_form_pages, detail_pages)
+        db_write_succeeded = _write_merged_data_to_pages(task_id, payment_request_form_page_numbers, merged_data)
 
-        for page_no in receipt_page_numbers:
+        for page_no in payment_request_form_page_numbers:
             merged_results[page_no] = merged_data
 
         if callback_fn and db_write_succeeded:
@@ -724,7 +772,7 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
                 # 回调范围展示完整桥接页，写库范围仍保持主单页不变。
                 await callback_fn(task_id, callback_page_numbers)
             except Exception as cb_err:
-                logger.error(f"receipt_detail 单页合并组回调异常: document_no={document_no}, error={cb_err}")
+                logger.error(f"payment_request_form_detail 单页合并组回调异常: document_no={document_no}, error={cb_err}")
 
     if not enable_page_merge:
         # 非合并模式下，普通页直接按页回调，不再做标准多页合并。
@@ -736,26 +784,26 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
                 except Exception as cb_err:
                     logger.error(f"单页回调异常: page={page_data['page_no']}, error={cb_err}")
 
-        if pending_receipt_ai_groups:
-            # 即使关闭标准合并，receipt_detail 的多页桥接仍要继续执行。
+        if pending_payment_request_form_detail_ai_groups:
+            # 即使关闭标准合并，payment_request_form_detail 的多页桥接仍要继续执行。
             ai_merge_semaphore = asyncio.Semaphore(AI_MERGE_MAX_CONCURRENCY)
             group_tasks = [
-                _process_receipt_detail_bridge_group(
+                _process_payment_request_form_detail_bridge_group(
                     task_id,
                     document_no,
-                    receipt_pages,
+                    payment_request_form_pages,
                     detail_pages,
                     callback_fn=callback_fn,
                     semaphore=ai_merge_semaphore,
                 )
-                for document_no, receipt_pages, detail_pages in pending_receipt_ai_groups
+                for document_no, payment_request_form_pages, detail_pages in pending_payment_request_form_detail_ai_groups
             ]
             group_results = await asyncio.gather(*group_tasks, return_exceptions=True)
 
             for idx, group_result in enumerate(group_results):
                 if isinstance(group_result, Exception):
-                    failed_group_key = pending_receipt_ai_groups[idx][0]
-                    logger.error(f"receipt_detail 并行AI合并组执行异常: document_no={failed_group_key}, error={group_result}", exc_info=True)
+                    failed_group_key = pending_payment_request_form_detail_ai_groups[idx][0]
+                    logger.error(f"payment_request_form_detail 并行AI合并组执行异常: document_no={failed_group_key}, error={group_result}", exc_info=True)
                     continue
                 merged_results.update(group_result)
 
@@ -802,26 +850,26 @@ async def merge_pages_data(task_id: str, callback_fn=None, prepare_callback_plan
             except Exception as cb_err:
                 logger.error(f"不合并组回调异常: group={group_key}, error={cb_err}")
 
-    if pending_receipt_ai_groups:
+    if pending_payment_request_form_detail_ai_groups:
         # 多页附表桥接单独并发处理，完成后立即写库并回调主单页。
         ai_merge_semaphore = asyncio.Semaphore(AI_MERGE_MAX_CONCURRENCY)
-        receipt_group_tasks = [
-            _process_receipt_detail_bridge_group(
+        payment_request_form_group_tasks = [
+            _process_payment_request_form_detail_bridge_group(
                 task_id,
                 document_no,
-                receipt_pages,
+                payment_request_form_pages,
                 detail_pages,
                 callback_fn=callback_fn,
                 semaphore=ai_merge_semaphore,
             )
-            for document_no, receipt_pages, detail_pages in pending_receipt_ai_groups
+            for document_no, payment_request_form_pages, detail_pages in pending_payment_request_form_detail_ai_groups
         ]
-        receipt_group_results = await asyncio.gather(*receipt_group_tasks, return_exceptions=True)
+        payment_request_form_group_results = await asyncio.gather(*payment_request_form_group_tasks, return_exceptions=True)
 
-        for idx, group_result in enumerate(receipt_group_results):
+        for idx, group_result in enumerate(payment_request_form_group_results):
             if isinstance(group_result, Exception):
-                failed_group_key = pending_receipt_ai_groups[idx][0]
-                logger.error(f"receipt_detail 并行AI合并组执行异常: document_no={failed_group_key}, error={group_result}", exc_info=True)
+                failed_group_key = pending_payment_request_form_detail_ai_groups[idx][0]
+                logger.error(f"payment_request_form_detail 并行AI合并组执行异常: document_no={failed_group_key}, error={group_result}", exc_info=True)
                 continue
             merged_results.update(group_result)
 

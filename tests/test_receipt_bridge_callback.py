@@ -17,10 +17,10 @@ def make_detail(page_no: int, structured_data):
 
 
 class ReceiptBridgeCallbackTests(unittest.TestCase):
-    def test_prefers_receipts_page_for_bridge_callback_raw(self):
+    def test_prefers_payment_request_form_page_for_bridge_callback_raw(self):
         detail_by_page = {
-            1: make_detail(1, {"document_type": "receipt_detail", "document_no": "R-001"}),
-            2: make_detail(2, {"document_type": "receipts", "document_no": "R-001", "total_amount": "100.00"}),
+            1: make_detail(1, {"document_type": "payment_request_form_detail", "document_no": "R-001"}),
+            2: make_detail(2, {"document_type": "payment_request_form", "document_no": "R-001", "total_amount": "100.00"}),
         }
 
         detail_info, selected_details = _select_callback_detail_for_pages([1, 2], detail_by_page)
@@ -32,7 +32,7 @@ class ReceiptBridgeCallbackTests(unittest.TestCase):
     def test_falls_back_to_first_detail_with_raw_when_no_primary_page_exists(self):
         detail_by_page = {
             3: make_detail(3, None),
-            4: make_detail(4, {"document_type": "receipt_detail", "document_no": "R-002"}),
+            4: make_detail(4, {"document_type": "payment_request_form_detail", "document_no": "R-002"}),
         }
 
         detail_info, selected_details = _select_callback_detail_for_pages([3, 4], detail_by_page)

@@ -350,7 +350,7 @@ Certificate No.: CC 1993
 仅输出上述结构的JSON字符串，确保可直接通过Python的json.loads()解析，无需任何修改。
 """
 
-RECEIPTS_PROMPT = """
+PAYMENT_REQUEST_FORM_PROMPT = """
 你是专业的建筑行业财务票据结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**物资付款办理单**文本中精准提取所有字段信息，文本为繁体中文+英文混合的建筑行业单据，需严格遵循业务字段定义提取。
 
 ## 核心提取规则（必须严格遵守，缺一不可）
@@ -454,7 +454,7 @@ Print Date: 2023-12-06 13:55
 
 #### 输出：
 {{
-    "document_type": "receipts",
+    "document_type": "payment_request_form",
     "product_service": [
         {{
             "product_service_name": "鐵咀大介刀(PJ3123)",
@@ -518,7 +518,7 @@ Print Date: 2023-12-06 13:55
 
 ## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
-  "document_type": "字符串（文件类型，固定为\"receipt_detail\"）",
+  "document_type": "字符串（文件类型，固定为\"payment_request_form\"）",
   "site_name": "字符串（地盘名称，如未出现则填\"\"）",
   "material_category": "字符串（材料分类，如未出现则填\"\"）",
   "date": "字符串（制单日期，如未出现则填\"\"）",
@@ -549,13 +549,13 @@ Print Date: 2023-12-06 13:55
 仅输出上述结构的JSON字符串，无任何其他内容，确保字段完整、类型正确、可直接转换为对应数据模型。
 """
 
-RECEIPT_DETAIL_PROMPT = """
+PAYMENT_REQUEST_FORM_DETAIL_PROMPT = """
 你是专业的建筑行业财务票据结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**材料付办单附表－摘要明細**文本中精准提取所有字段信息。
 
 ## 核心提取规则（必须严格遵守）
 1. 输出格式：仅返回合法可解析的JSON字符串，不添加任何解释、备注、换行或额外文字；
 2. 字段要求：
-   - 字段结构与 `receipts` 类型完全一致，但 `document_type` 固定输出为 `receipt_detail`；
+   - 字段结构与 `payment_request_form` 类型完全一致，但 `document_type` 固定输出为 `payment_request_form_detail`；
    - 文本中未出现的字段统一填充为空字符串 `""`，数组无数据则返回 `[]`；
    - `product_service` 为数组，有多少条费用/材料明细就提取多少条；
    - **禁止漏项**：表格中每一行费用/材料明细都必须输出为一条 `product_service` 记录，不能只提取前几条；
@@ -609,7 +609,7 @@ RECEIPT_DETAIL_PROMPT = """
 
 ### 输出：
 {{
-  "document_type": "receipt_detail",
+  "document_type": "payment_request_form_detail",
   "site_name": "",
   "material_category": "",
   "date": "",
@@ -749,7 +749,7 @@ RECEIPT_DETAIL_PROMPT = """
 
 ## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
-  "document_type": "字符串（文件类型，固定为\"receipt_detail\"）",
+  "document_type": "字符串（文件类型，固定为\"payment_request_form_detail\"）",
   "site_name": "字符串（地盘名称，如：將軍澳海水化淡廠第一階段(CDX)）",
   "material_category": "字符串（材料分类，如：安全環保用品(U01)）",
   "date": "字符串（制单日期，如：2024-01-02）",
@@ -1770,7 +1770,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
 
     Args:
         ocr_text: OCR识别的文本内容
-        document_type: 文档类型（invoice, receipts, delivery_note, misc_materials_app, transaction等）
+        document_type: 文档类型（invoice, payment_request_form, payment_request_form_detail, delivery_note, misc_materials_app, transaction等）
 
     Returns:
         格式化后的Prompt字符串
@@ -1780,8 +1780,8 @@ def get_prompt_by_document_type(document_type: str) -> str:
         "invoice": INVOICE_PROMPT,
         "quotation": QUOTATION_PROMPT,
         "receipt": RECEIPT_PROMPT,
-        "receipts": RECEIPTS_PROMPT,
-        "receipt_detail": RECEIPT_DETAIL_PROMPT,
+        "payment_request_form": PAYMENT_REQUEST_FORM_PROMPT,
+        "payment_request_form_detail": PAYMENT_REQUEST_FORM_DETAIL_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,
         "misc_materials_app": MISC_MATERIALS_APP_PROMPT,
         "transaction": TRANSACTION_RECORD_PROMPT

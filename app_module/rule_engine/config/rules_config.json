@@ -86,7 +86,7 @@
       }
     ]
   },
-  "receipts": {
+  "payment_request_form": {
     "site_name": [
       {
         "rule_type": "regex",

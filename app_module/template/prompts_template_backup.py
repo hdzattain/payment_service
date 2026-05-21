@@ -275,7 +275,7 @@ Total: HK$ 8,140.00
 仅输出上述结构的JSON字符串，确保可直接通过Python的json.loads()解析，无需任何修改。
 """
 
-RECEIPTS_PROMPT = """
+PAYMENT_REQUEST_FORM_PROMPT = """
 你是专业的建筑行业财务票据结构化数据提取专家，需严格按照指定JSON结构，从以下OCR识别的**物资付款办理单**文本中精准提取所有字段信息，文本为繁体中文+英文混合的建筑行业单据，需严格遵循业务字段定义提取。
 
 ## 核心提取规则（必须严格遵守，缺一不可）
@@ -452,7 +452,7 @@ RECEIPTS_PROMPT = """
 
 #### 输出：
 {{
-    "document_type": "receipts",
+    "document_type": "payment_request_form",
     "product_service": [
         {{
             "product_service_name": "鐵咀大介刀(PJ3123)",
@@ -516,7 +516,7 @@ RECEIPTS_PROMPT = """
 
 ## 强制遵循的JSON结构（字段名、层级、类型完全匹配）
 {{
-  "document_type": "字符串（文件类型，固定为\"receipts\"）",
+  "document_type": "字符串（文件类型，固定为\"payment_request_form\"）",
   "site_name": "字符串（地盘名称，如：將軍澳海水化淡廠第一階段(CDX)）",
   "material_category": "字符串（材料分类，如：安全環保用品(U01)）",
   "date": "字符串（制单日期，如：2024-01-02）",
@@ -1111,7 +1111,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
 
     Args:
         ocr_text: OCR识别的文本内容
-        document_type: 文档类型（invoice, receipts, delivery_note, misc_materials_app, transaction等）
+        document_type: 文档类型（invoice, payment_request_form, delivery_note, misc_materials_app, transaction等）
 
     Returns:
         格式化后的Prompt字符串
@@ -1119,7 +1119,7 @@ def get_prompt_by_document_type(document_type: str) -> str:
     # 定义文档类型到Prompt模板的映射
     prompt_mapping = {
         "invoice": INVOICE_PROMPT,
-        "receipts": RECEIPTS_PROMPT,
+        "payment_request_form": PAYMENT_REQUEST_FORM_PROMPT,
         "delivery_note": DELIVERY_NOTE_PROMPT,
         "misc_materials_app": MISC_MATERIALS_APP_PROMPT,
         "transaction": TRANSACTION_RECORD_PROMPT

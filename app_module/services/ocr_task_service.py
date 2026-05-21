@@ -9,6 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app_module.core.config import settings
+from app_module.core.document_types import (
+    PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
+    PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
+    PAYMENT_REQUEST_FORM_DETAIL_RULE_KEY,
+    PAYMENT_REQUEST_FORM_RULE_KEY,
+)
 from app_module.logger.logger_config import setup_logger
 from app_module.mapper.ocr_task_callback_record_mapper import OcrTaskCallbackRecordMapper
 from app_module.mapper.ocr_task_detail_mapper import OcrTaskDetailMapper
@@ -269,11 +275,11 @@ def _select_callback_detail_for_pages(page_numbers: list[int], detail_by_page: d
     if not selected_details:
         return None, []
 
-    # receipt_detail 桥接回调会同时带主单页和附表页，此时优先取已回写 merged receipts 数据的主单页。
+    # payment_request_form_detail 桥接回调会同时带主单页和附表页，此时优先取已回写 merged payment_request_form 数据的主单页。
     for detail in selected_details:
         structured_data = _parse_detail_structured_data(detail)
         document_type = (structured_data or {}).get("document_type", "")
-        if document_type and document_type != "receipt_detail":
+        if document_type and document_type != PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE:
             return detail, selected_details
 
     for detail in selected_details:
@@ -897,7 +903,7 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
             structured_data = structured_response.get("structured_data", None)
             llm_structured_data = structured_response.get("llm_structured_data", None)
             regex_structured_data = structured_response.get("regex_structured_data", None)
-            should_send_callback = (not merge_mode and document_type != "receipt_detail")
+            should_send_callback = (not merge_mode and document_type != PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE)
 
             # 提取 group_id
             group_id = None
@@ -940,25 +946,27 @@ async def process_single_page_ocr(task_id: str, page_info: dict, semaphore: asyn
                 }
                 detail_mapper.update_task_detail(task_id, page_info["page_number"], update_data)
         finally:
-            # 只有非合并模式且非 receipt_detail 才发送单页回调
+            # 只有非合并模式且非 payment_request_form_detail 才发送单页回调
             if should_send_callback:
                 logger.info(f"發送回調信息: task_id={task_id}, page={page_info['page_number']}")
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(aux_executor, send_callback_message, task_id, page_info['page_number'])
 
 
-def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
+def extract_payment_request_form_data(ocr_text, document_type: str = PAYMENT_REQUEST_FORM_DOCUMENT_TYPE):
     """使用规则引擎提取物资付款办理单数据"""
-    llm_document_type = document_type
+    normalized_document_type = document_type
+    llm_document_type = normalized_document_type
 
     # 初始化结构化数据
     regex_structured_data: dict[str, Any] = {
-        "document_type": document_type,
+        "document_type": normalized_document_type,
         "product_service": []
     }
 
     # 使用规则引擎提取字段（线程安全：直接传入ocr_text）
-    extracted_fields: dict[str, Any] = rule_engine.extract_fields("receipts", ocr_text)
+    rule_key = PAYMENT_REQUEST_FORM_DETAIL_RULE_KEY if normalized_document_type == PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE else PAYMENT_REQUEST_FORM_RULE_KEY
+    extracted_fields: dict[str, Any] = rule_engine.extract_fields(rule_key, ocr_text)
 
     # 更新结构化数据
     for field, value in extracted_fields.items():
@@ -972,9 +980,9 @@ def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
     structured_data, llm_data = merge_structured_data_with_llm(regex_structured_data, ocr_text, llm_document_type)
 
     if structured_data is not None:
-        structured_data["document_type"] = document_type
+        structured_data["document_type"] = normalized_document_type
     if llm_data is not None:
-        llm_data["document_type"] = document_type
+        llm_data["document_type"] = normalized_document_type
 
     # # 统一转换日期格式
     # invoice_date = structured_data.get('invoice_date')
@@ -983,7 +991,7 @@ def extract_receipts_form_data(ocr_text, document_type: str = "receipts"):
     # structured_data['date'] = convert_dates_in_text(date)
 
     return {
-        "document_type": document_type,
+        "document_type": normalized_document_type,
         "structured_data": structured_data,
         "llm_structured_data": llm_data,
         "regex_structured_data": regex_structured_data
@@ -1270,12 +1278,12 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
     通用的结构化数据识别率计算方法
 
     :param structured_data: 结构化数据字典
-    :param document_type: 文档类型（receipts, receipt, invoice, delivery_note, misc_materials_app）
+    :param document_type: 文档类型（payment_request_form, payment_request_form_detail, receipt, invoice, delivery_note, misc_materials_app）
     :return: 识别率百分比
     """
     # 根据文档类型定义必需字段
     required_fields_map = {
-        "receipts": [
+        PAYMENT_REQUEST_FORM_DOCUMENT_TYPE: [
             'document_type',
             'document_no',
             'site_name',
@@ -1292,7 +1300,7 @@ def calculate_recognition_rate(structured_data: dict, document_type: str) -> flo
             'delivery_note_no',
             'remarks'
         ],
-        "receipt_detail": [
+        PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE: [
             'document_type',
             'document_no',
             'site_name',
@@ -1457,10 +1465,10 @@ def extract_structured_data_from_ocr(ocr_text: str) -> dict:
     document_type = recognition_result.get("document_type")
 
     # 先统一做类型识别，再路由到对应提取逻辑，避免重叠关键字被 if/elif 顺序误伤。
-    if document_type == "receipt_detail":
-        return extract_receipts_form_data(ocr_text, document_type="receipt_detail")
-    elif document_type == "receipts":
-        return extract_receipts_form_data(ocr_text)
+    if document_type == PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE:
+        return extract_payment_request_form_data(ocr_text, document_type=PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE)
+    elif document_type == PAYMENT_REQUEST_FORM_DOCUMENT_TYPE:
+        return extract_payment_request_form_data(ocr_text, document_type=PAYMENT_REQUEST_FORM_DOCUMENT_TYPE)
     elif document_type == "delivery_note":
         return extract_delivery_note_data(ocr_text)
     elif document_type == "quotation":

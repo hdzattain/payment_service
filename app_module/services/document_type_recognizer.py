@@ -2,6 +2,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app_module.core.document_types import (
+    PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
+    PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
+)
 from app_module.logger.logger_config import setup_logger
 
 logger = setup_logger("document_type_recognizer")
@@ -56,7 +60,7 @@ class DocumentTypeRecognizer:
         "材料付款辦理單附表摘要明细",
     ]
 
-    RECEIPTS_KEYWORDS = [
+    PAYMENT_REQUEST_FORM_KEYWORDS = [
         "物資付款辦理單",
         "物资付款办理单",
         "物料付款辦理單",
@@ -111,8 +115,8 @@ class DocumentTypeRecognizer:
             return strong_result
 
         scores: dict[str, int] = {
-            "receipt_detail": 0,
-            "receipts": 0,
+            PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE: 0,
+            PAYMENT_REQUEST_FORM_DOCUMENT_TYPE: 0,
             "delivery_note": 0,
             "quotation": 0,
             "receipt": 0,
@@ -122,8 +126,8 @@ class DocumentTypeRecognizer:
         }
         reasons: dict[str, list[str]] = {document_type: [] for document_type in scores}
 
-        self._score_receipt_detail(profile, scores, reasons)
-        self._score_receipts(profile, scores, reasons)
+        self._score_payment_request_form_detail(profile, scores, reasons)
+        self._score_payment_request_form(profile, scores, reasons)
         self._score_delivery_note(profile, scores, reasons)
         self._score_quotation(profile, scores, reasons)
         self._score_receipt_generic(profile, scores, reasons)
@@ -167,18 +171,18 @@ class DocumentTypeRecognizer:
     def _match_strong_rules(self, profile: _TextProfile) -> dict[str, Any] | None:
         if self._markdown_title_contains_any(profile, self.RECEIPT_DETAIL_KEYWORDS, ignore_case=False, ignore_space=True):
             return self._build_result(
-                "receipt_detail",
+                PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
                 "strong_rule",
-                {"receipt_detail": 100},
-                ["matched receipt_detail markdown title"],
+                {PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE: 100},
+                ["matched payment request form detail markdown title"],
             )
 
-        if self._markdown_title_contains_any(profile, self.RECEIPTS_KEYWORDS):
+        if self._markdown_title_contains_any(profile, self.PAYMENT_REQUEST_FORM_KEYWORDS):
             return self._build_result(
-                "receipts",
+                PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
                 "strong_rule",
-                {"receipts": 100},
-                ["matched receipts markdown title"],
+                {PAYMENT_REQUEST_FORM_DOCUMENT_TYPE: 100},
+                ["matched payment request form markdown title"],
             )
 
         if self._markdown_title_contains_any(profile, self.MISC_MATERIALS_KEYWORDS):
@@ -229,20 +233,20 @@ class DocumentTypeRecognizer:
 
         if any(keyword in profile.text_no_space for keyword in self.RECEIPT_DETAIL_KEYWORDS):
             return self._build_result(
-                "receipt_detail",
+                PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE,
                 "strong_rule",
-                {"receipt_detail": 100},
-                ["matched receipt_detail title keyword"],
+                {PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE: 100},
+                ["matched payment request form detail title keyword"],
             )
 
-        if any(keyword in profile.top_text for keyword in self.RECEIPTS_KEYWORDS) or any(
-            keyword in profile.raw_text for keyword in self.RECEIPTS_KEYWORDS
+        if any(keyword in profile.top_text for keyword in self.PAYMENT_REQUEST_FORM_KEYWORDS) or any(
+            keyword in profile.raw_text for keyword in self.PAYMENT_REQUEST_FORM_KEYWORDS
         ):
             return self._build_result(
-                "receipts",
+                PAYMENT_REQUEST_FORM_DOCUMENT_TYPE,
                 "strong_rule",
-                {"receipts": 100},
-                ["matched receipts title keyword"],
+                {PAYMENT_REQUEST_FORM_DOCUMENT_TYPE: 100},
+                ["matched payment request form title keyword"],
             )
 
         if any(keyword in profile.top_text for keyword in self.MISC_MATERIALS_KEYWORDS):
@@ -322,36 +326,36 @@ class DocumentTypeRecognizer:
 
         return None
 
-    def _score_receipt_detail(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+    def _score_payment_request_form_detail(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
         if not self._text_contains_any(profile, self.RECEIPT_DETAIL_KEYWORDS, ignore_space=True):
             return
 
         if self._contains_any(profile.text_lower_no_space, ["摘要明細", "摘要明细"]):
-            scores["receipt_detail"] += 4
-            reasons["receipt_detail"].append("matched detail summary wording")
+            scores[PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE] += 4
+            reasons[PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE].append("matched detail summary wording")
         detail_table_hits = sum(
             1 for keyword in ["費用類型", "费用类型", "描述", "數量", "数量", "單價", "单价", "金額", "金额"]
             if keyword in profile.raw_text
         )
         if detail_table_hits >= 4:
-            scores["receipt_detail"] += 8
-            reasons["receipt_detail"].append("matched receipt_detail table structure")
+            scores[PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE] += 8
+            reasons[PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE].append("matched payment request form detail table structure")
 
-    def _score_receipts(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
-        if not self._text_contains_any(profile, self.RECEIPTS_KEYWORDS):
+    def _score_payment_request_form(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
+        if not self._text_contains_any(profile, self.PAYMENT_REQUEST_FORM_KEYWORDS):
             return
 
-        hits = sum(1 for keyword in self.RECEIPTS_KEYWORDS if keyword in profile.raw_text)
+        hits = sum(1 for keyword in self.PAYMENT_REQUEST_FORM_KEYWORDS if keyword in profile.raw_text)
         if hits:
-            scores["receipts"] += hits * 20
-            reasons["receipts"].append("matched receipts title wording")
+            scores[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE] += hits * 20
+            reasons[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE].append("matched payment request form title wording")
         field_hits = sum(
             1 for keyword in ["payment method", "invoice no", "delivery note no", "remarks", "contract no"]
             if keyword in profile.text_lower
         )
         if field_hits >= 2:
-            scores["receipts"] += 6
-            reasons["receipts"].append("matched receipts-like business fields")
+            scores[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE] += 6
+            reasons[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE].append("matched payment request form business fields")
 
     def _score_delivery_note(self, profile: _TextProfile, scores: dict[str, int], reasons: dict[str, list[str]]) -> None:
         if not self._text_contains_any(profile, self.DELIVERY_NOTE_KEYWORDS, ignore_case=True):
@@ -445,29 +449,29 @@ class DocumentTypeRecognizer:
         )
         if invoice_signals >= 2:
             scores["receipt"] -= 4
-            scores["receipts"] -= 3
+            scores[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE] -= 3
             reasons["invoice"].append("penalized receipt-like candidates by invoice signals")
 
-        if any(keyword in profile.raw_text for keyword in self.RECEIPTS_KEYWORDS):
+        if any(keyword in profile.raw_text for keyword in self.PAYMENT_REQUEST_FORM_KEYWORDS):
             scores["invoice"] -= 6
             scores["receipt"] -= 2
-            reasons["receipts"].append("penalized invoice by receipts title")
+            reasons[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE].append("penalized invoice by payment request form title")
 
         if any(keyword in profile.text_no_space for keyword in self.RECEIPT_DETAIL_KEYWORDS):
             scores["invoice"] -= 8
             scores["receipt"] -= 4
-            reasons["receipt_detail"].append("penalized non-detail candidates by receipt_detail title")
+            reasons[PAYMENT_REQUEST_FORM_DETAIL_DOCUMENT_TYPE].append("penalized non-detail candidates by payment request form detail title")
 
         quotation_field_signals = self._count_quotation_field_signals(profile)
         if quotation_field_signals >= 2:
             scores["invoice"] -= 6
             scores["receipt"] -= 3
-            scores["receipts"] -= 3
+            scores[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE] -= 3
             reasons["quotation"].append("penalized non-quotation candidates by quotation no/date fields")
 
-        if any(keyword in profile.raw_text for keyword in self.RECEIPTS_KEYWORDS):
+        if any(keyword in profile.raw_text for keyword in self.PAYMENT_REQUEST_FORM_KEYWORDS):
             scores["receipt"] -= 4
-            reasons["receipts"].append("penalized generic receipt by receipts title")
+            reasons[PAYMENT_REQUEST_FORM_DOCUMENT_TYPE].append("penalized generic receipt by payment request form title")
 
     def _select_best_result(self, scores: dict[str, int], reasons: dict[str, list[str]]) -> dict[str, Any]:
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
