@@ -115,11 +115,23 @@ class DocumentTypeRecognizer:
         re.compile(r"發\s*invoice\s*票", re.IGNORECASE),
         re.compile(r"发\s*invoice\s*票", re.IGNORECASE),
     ]
+    TERMS_AND_CONDITIONS_TITLE_KEYWORDS = [
+        "general terms and conditions",
+        "terms and conditions of sale",
+    ]
 
     def recognize(self, ocr_text: str) -> dict[str, Any]:
         profile = self._build_text_profile(ocr_text)
         if not profile.raw_text.strip():
             return self._build_result("unknown", "empty", {}, ["empty text"])
+
+        if self._is_terms_or_legal_page(profile):
+            return self._build_result(
+                "unknown",
+                "strong_rule",
+                {"unknown": 100},
+                ["matched terms and conditions / legal page title"],
+            )
 
         strong_result = self._match_strong_rules(profile)
         if strong_result is not None:
@@ -537,6 +549,16 @@ class DocumentTypeRecognizer:
         if any(keyword in profile.top_text for keyword in ("客戶", "客户")):
             signal_count += 1
         return signal_count
+
+    @classmethod
+    def _is_terms_or_legal_page(cls, profile: _TextProfile) -> bool:
+        for title_line in profile.markdown_title_lines_lower:
+            normalized_title = re.sub(r"\s+", " ", title_line.lstrip("#").strip())
+            if normalized_title in cls.TERMS_AND_CONDITIONS_TITLE_KEYWORDS:
+                return True
+
+        normalized_top_lines = [re.sub(r"\s+", " ", line.strip().lower()) for line in profile.top_lines]
+        return any(line in cls.TERMS_AND_CONDITIONS_TITLE_KEYWORDS for line in normalized_top_lines)
 
     @classmethod
     def _has_invoice_mixed_title(cls, profile: _TextProfile) -> bool:
