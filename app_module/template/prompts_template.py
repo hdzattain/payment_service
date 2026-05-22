@@ -949,8 +949,8 @@ QUOTATION_PROMPT = """
 3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
 4. 字段理解：
    - `document_no` 报价单编号；
-   - `quotation_date` 报价单日期，优先从 `Quotation Date` / `Quotation Date.` 提取；
-   - `customer_name` 客户名称，优先从 `Messrs` / `Messers` 提取；
+   - `quotation_date` 报价单日期；
+   - `customer_name` 客户名称，可优先从 `Messrs` / `Messers` 提取，没有则按票据内容进行理解，无则填空；
    - `project_name` 地盘名称，优先从 `Site` / `Project` / `Site/Project` 提取；
    - `supplier_name`、`supplier_address`、`supplier_phone` 优先从页首供应商抬头信息提取，其中 `supplier_name` 优先取英文主名，若无英文主名再取中文或原文拼接；
    - 明细若跨多行，首行主内容放入 `product_service_name`，后续标准/方法/规格说明放入 `product_service_specification`；
