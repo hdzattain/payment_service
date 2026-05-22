@@ -1050,7 +1050,7 @@ H.K.
 **Site/Project** : Contract No.: 12/WSD/17
 Design, Build and Operate First Stage of Tseung Kwan O Desalination Plant
 
-**Quotation No.** : HQ22-0670
+**Quotation**: HQ22-0670
 **Quotation Date** : 29 Apr 2022
 **Customer** : C0279
 **Tel** : 5169 7261
