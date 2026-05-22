@@ -948,7 +948,16 @@ QUOTATION_PROMPT = """
    - 金额/单价值：保留原文数字格式并移除币种符号与千分位逗号，如 `HK$ 1,800.00` → `1800.00`、`1800` → `1800`；
 3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
 4. 字段理解：
-   - `document_no` 报价单编号；
+    - `document_no` 报价单编号。提取优先级：  
+      (1) 优先在文档前 1/3 区域，且紧跟在 "Quotation"、"Quotation No"、“Quote"、"报价单" 等标题行附近（前后 4 行内），提取由字母、数字、符号组成的字符串；  
+      (2) 若无上述标题，则搜索带有 "No."、"#"、"Ref."、"编号" 等标识的行，取标识后的首个符合上述模式的字符串；  
+      (3) 排除以下明显不是报价单编号的值：  
+          - 日期格式（如 2022-04-29、29-Apr-2022、20240429）  
+          - 电话/传真号码（含 +、括号、空格分组，或前后有 Tel/Fax 字样）  
+          - 金额数字（含货币符号 $、HK$、USD）  
+          - 纯数字且长度 < 5 或 > 8（除非该数字明显是编号，如 "000123"）  
+          - 包含中文或特殊符号（除 - / _ 外）  
+      (4) 若仍无法确定，填空 `""`。
    - `quotation_date` 报价单日期；
    - `customer_name` 客户名称，可优先从 `Messrs` / `Messers` 提取，没有则按票据内容进行理解，无则填空；
    - `project_name` 地盘名称，优先从 `Site` / `Project` / `Site/Project` 提取；
@@ -1161,6 +1170,65 @@ Cont. on page 2
   ],
   "currency": "HKD",
   "total_amount": "0.00"
+}}
+
+### 案例 3：
+#### 输入：
+---
+# 香港試驗有限公司
+# HONG KONG TESTING CO., LTD.
+Rm. G04, G/F., & Rm. 205, 2/F., Fuk Shing Comm. Bldg., 28 On Lok Mun St., On Lok Tsuen, Fanling, N.T. Hong Kong.
+- Tel: (852) 2692 2171 Fax: (852) 2691 4874 Email: info@hktesting.com.hk
+- Website: www.hktesting.com.hk
+香港新界粉嶺安樂村安樂門街28號福成商業大廈地下G04室及二樓205室 電話：(852) 2692 2171 傳真：(852) 2691 4874
+
+## Quotation
+
+- Quotation No. : HQ22-0670
+P. 2 of 2
+
+| Item | Product Description | Qty. | Unit | Price HK$ | Amount HK$ |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| | 9. No Statement of conformity will be provided in test report except rebars (physical) test. See annex A for rebars (physical) test only. | | | | |
+| | 10. Some of the tests will be carried out by another laboratory which is competent to perform the tests and complies with the criteria of competence as our company in respect of the work being sub-contracted. For sub-contracted test, the provision of statement of conformity & decision rule will follow the sub-contracting laboratory. | | | | |
+
+**Payment Terms** : 30 days from the invoice date. Interest will be charged on overdue account at 2% per month.
+
+**Remarks** : If any further details are needed, please contact Mr. K.L. Ng or Mr. C.L. Fu on 2692 2171. Please sign back for confirmation, should this quotation be acceptable.
+
+For and on behalf of
+Hong Kong Testing Company Limited
+
+Ng Kai Leung (Laboratory Manager)
+[Stamp: HONG KONG TESTING CO. LTD.]
+
+Accept By (Signature & Co.Chop)
+
+- Company:
+- Date:
+
+[Stamp: STATE CONST. ENG. (H.K.) LTD.]
+訂貨專用
+中國建築工程(香港)有限公司
+將軍澳海水化淡廠
+第一階段
+13/WSD/11
+
+#### 输出：
+{{
+  "document_type": "quotation",
+  "document_no": "HQ22-0670",
+  "quotation_date": "",
+  "customer_name": "中國建築工程(香港)有限公司",
+  "customer_address": "",
+  "project_name": "將軍澳海水化淡廠第一階段",
+  "supplier_id": "",
+  "supplier_name": "HONG KONG TESTING CO., LTD.",
+  "supplier_phone": "(852) 2692 2171",
+  "supplier_address": "Rm. G04, G/F., & Rm. 205, 2/F., Fuk Shing Comm. Bldg., 28 On Lok Mun St., On Lok Tsuen, Fanling, N.T. Hong Kong.",
+  "product_service": [],
+  "currency": "HKD",
+  "total_amount": ""
 }}
 
 ## OCR识别的报价单文本：
