@@ -948,10 +948,10 @@ QUOTATION_PROMPT = """
    - 金额/单价值：保留原文数字格式并移除币种符号与千分位逗号，如 `HK$ 1,800.00` → `1800.00`、`1800` → `1800`；
 3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
 4. 字段理解：
-   - `document_no` 优先从 `Quotation No` / `Quotation No.` 提取；
-   - `quotation_date` 优先从 `Quotation Date` / `Quotation Date.` 提取；
-   - `customer_name` 优先从 `Messrs` / `Messers` 提取；
-   - `project_name` 优先从 `Site` / `Project` / `Site/Project` 提取；
+   - `document_no` 报价单编号；
+   - `quotation_date` 报价单日期，优先从 `Quotation Date` / `Quotation Date.` 提取；
+   - `customer_name` 客户名称，优先从 `Messrs` / `Messers` 提取；
+   - `project_name` 地盘名称，优先从 `Site` / `Project` / `Site/Project` 提取；
    - `supplier_name`、`supplier_address`、`supplier_phone` 优先从页首供应商抬头信息提取，其中 `supplier_name` 优先取英文主名，若无英文主名再取中文或原文拼接；
    - 明细若跨多行，首行主内容放入 `product_service_name`，后续标准/方法/规格说明放入 `product_service_specification`；
    - `currency` 需归一化为 `HKD/USA/CNY/MOP`，其他币种按原文；
@@ -1210,7 +1210,7 @@ RECEIPT_PROMPT = """
 3. 数据来源：仅从OCR文本中提取，不编造、不猜测；
 4. 字段理解：
    - `document_type` 固定输出 `receipt`；
-   - `document_no` 取收据号 `No.` / `No`，不要误提取 `提單號碼` 作为 `document_no`；
+   - `document_no` 取收据号，不要误提取 `提單號碼` 作为 `document_no`；
    - `license_plate` 取 `車牌` / `车牌`；
    - `customer_address` 仅在明确出现客户地址时提取；
    - `project_name` 仅在明确出现 `Site` / `Project` / `地盤` / `工程` 时提取；`貨品` 不是 `project_name`；
