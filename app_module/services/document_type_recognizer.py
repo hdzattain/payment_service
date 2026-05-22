@@ -104,6 +104,17 @@ class DocumentTypeRecognizer:
 
     RECEIPT_GENERIC_KEYWORDS = ["receipt", "收據", "收据"]
     INVOICE_KEYWORDS = ["invoice", "發票", "发票"]
+    INVOICE_NO_FIELD_KEYWORDS = ["invoice no", "invoice no.", "發票號", "发票号"]
+    INVOICE_MIXED_TITLE_KEYWORDS = [
+        "發invoice票",
+        "發 invoice 票",
+        "发 invoice 票",
+        "发invoice票",
+    ]
+    INVOICE_MIXED_TITLE_PATTERNS = [
+        re.compile(r"發\s*invoice\s*票", re.IGNORECASE),
+        re.compile(r"发\s*invoice\s*票", re.IGNORECASE),
+    ]
 
     def recognize(self, ocr_text: str) -> dict[str, Any]:
         profile = self._build_text_profile(ocr_text)
@@ -297,7 +308,10 @@ class DocumentTypeRecognizer:
         if self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
             invoice_signals += 2
             invoice_reasons.append("matched invoice keyword in markdown title")
-        if self._contains_any(profile.top_text_lower, ["invoice no", "invoice no."]):
+        if self._has_invoice_mixed_title(profile):
+            invoice_signals += 1
+            invoice_reasons.append("matched mixed Chinese-English invoice title")
+        if self._text_contains_any(profile, self.INVOICE_NO_FIELD_KEYWORDS, ignore_case=True):
             invoice_signals += 1
             invoice_reasons.append("matched invoice no field")
         if "invoice date" in profile.top_text_lower:
@@ -401,7 +415,10 @@ class DocumentTypeRecognizer:
         if self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True):
             scores["invoice"] += 30
             reasons["invoice"].append("matched invoice keyword in markdown title")
-        if self._contains_any(profile.text_lower, ["invoice no", "invoice no."]):
+        if self._has_invoice_mixed_title(profile):
+            scores["invoice"] += 18
+            reasons["invoice"].append("matched mixed Chinese-English invoice title")
+        if self._text_contains_any(profile, self.INVOICE_NO_FIELD_KEYWORDS, ignore_case=True):
             scores["invoice"] += 12
             reasons["invoice"].append("matched invoice no")
         if "invoice date" in profile.text_lower:
@@ -442,7 +459,8 @@ class DocumentTypeRecognizer:
         invoice_signals = sum(
             1 for condition in [
                 self._markdown_title_contains_any(profile, self.INVOICE_KEYWORDS, ignore_case=True),
-                self._contains_any(profile.text_lower, ["invoice no", "invoice no."]),
+                self._has_invoice_mixed_title(profile),
+                self._text_contains_any(profile, self.INVOICE_NO_FIELD_KEYWORDS, ignore_case=True),
                 "invoice date" in profile.text_lower,
                 "bill to" in profile.text_lower,
             ] if condition
@@ -519,6 +537,13 @@ class DocumentTypeRecognizer:
         if any(keyword in profile.top_text for keyword in ("客戶", "客户")):
             signal_count += 1
         return signal_count
+
+    @classmethod
+    def _has_invoice_mixed_title(cls, profile: _TextProfile) -> bool:
+        if cls._text_contains_any(profile, cls.INVOICE_MIXED_TITLE_KEYWORDS, ignore_case=True):
+            return True
+
+        return any(pattern.search(profile.raw_text) for pattern in cls.INVOICE_MIXED_TITLE_PATTERNS)
 
     @staticmethod
     def _text_contains_any(
