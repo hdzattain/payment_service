@@ -1,15 +1,19 @@
+import shutil
+import tempfile
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from PyPDF2 import PdfReader
 
 from app_module.api.auth.ocr_auth import get_current_client
 from app_module.database.ocr_database import get_db
 from app_module.domain.dto.ocr_schemas import CreateOCRRequest
 from app_module.logger.logger_config import setup_logger
 from app_module.mapper.ocr_task_mapper import OcrTaskMapper
+from app_module.utils.download_utils import download_file_from_url
 
 # 获取日志记录器
 logger = setup_logger("ocr_api")
@@ -19,6 +23,11 @@ router = APIRouter(
     tags=["OCR任务管理API"],
     dependencies=[Depends(get_current_client)]
 )
+
+
+def get_pdf_page_total(file_path: str) -> int:
+    reader = PdfReader(file_path)
+    return len(reader.pages)
 
 
 # 文件上传与任务创建接口
@@ -45,14 +54,18 @@ async def create_ocr_task(
             }
         )
 
+    temp_dir = None
     try:
         task_mapper = OcrTaskMapper(db)
+        temp_dir = tempfile.mkdtemp(prefix="payment_ocr_create_")
+        downloaded_file = await download_file_from_url(param.file_url, temp_dir)
+        page_total = get_pdf_page_total(downloaded_file)
 
         # 生成唯一任务ID
         task_id = f"ocr_{datetime.now().strftime('%Y%m%d%H%M%S')}_{str(uuid.uuid4())[:8]}"
 
         # 记录任务创建日志
-        logger.info(f"创建OCR任务: task_id={task_id}, foreign_id={param.foreign_id}, file_url={param.file_url}")
+        logger.info(f"创建OCR任务: task_id={task_id}, foreign_id={param.foreign_id}, file_url={param.file_url}, page_total={page_total}")
 
         # 创建任务记录
         task_data = {
@@ -60,6 +73,7 @@ async def create_ocr_task(
             "foreign_id": param.foreign_id,
             "callback_url": param.callback_url,
             "file_url": param.file_url,
+            "file_page": page_total,
             "status": 0  # 待执行
         }
         task_mapper.create_task(task_data)
@@ -81,9 +95,10 @@ async def create_ocr_task(
             )
 
         logger.info(
-            "OCR任务已创建: task_id=%s, queued_immediately=%s",
+            "OCR任务已创建: task_id=%s, queued_immediately=%s, page_total=%s",
             task_id,
             queued_immediately,
+            page_total,
         )
     except Exception as e:
         logger.error(f"OCR任务创建失败: {str(e)}")
@@ -94,6 +109,9 @@ async def create_ocr_task(
                 "message": "OCR任务创建失败"
             }
         )
+    finally:
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     return JSONResponse(
         status_code=200,
@@ -101,7 +119,8 @@ async def create_ocr_task(
             "code": 200,
             "message": "OCR任务已创建并进入队列",
             "data": {
-                "task_id": task_id
+                "task_id": task_id,
+                "page_total": page_total
             }
         }
     )
