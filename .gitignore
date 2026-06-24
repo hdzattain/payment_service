@@ -1,0 +1,147 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.#*
+
+# Environment specific
+.env.local
+.env.*.local
+.settings/
+
+# Project specific
+*.pdf
+*.jpg
+*.png
+*.jpeg
+*.gif
+*.bmp
+
+# App specific
+app_module/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py~
+*.bak
+*.orig
+*.rej
+
+# Coverage reports
+.coverage
+htmlcov/
+.coverage.*
+
+# Documentation
+docs/_build/
+
+# Jupyter Notebooks
+*.ipynb_checkpoints/
+
+# Local configuration files
+config_local.py
+local_settings.py
+
+# Temporary files directory
+temp_files/
+tmp/
+temp/
+
+# Cache directories
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+cython_debug/
+
+# Distribution / packaging
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+
+# Debug / profiling
+profile.log
+.profile
+*.prof
+
+# Testing
+.pytest_cache/
+.hypothesis/
+
+# Security
+*.key
+*.pem
+*.crt
+*.cert
+secret.key
+private.key
+.id_rsa
+
+markdown
+.env
+.gitignore
+.gitignore
